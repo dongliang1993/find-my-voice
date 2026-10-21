@@ -1,3 +1,3 @@
 [
-  { "id": "zh_female_vv_uranus_bigtts", "name": "Vivi", "description": "供应商公开的 2.0 示例音色。具体听感及账户权限需要实际试听和验证。", "languages": ["zh", "en"], "enabled": false, "resource_id": "seed-tts-2.0" }
+  { "id": "zh_female_vv_uranus_bigtts", "name": "Vivi", "description": "内置公开候选，不是正式角色声音，也不代表账户已开通。具体听感及账户权限需要用户同意后的真实试听验证；可通过 data/voices.json 提供其他候选。", "languages": ["zh", "en"], "enabled": true, "resource_id": "seed-tts-2.0" }
 ]

@@ -23,12 +23,12 @@ export function listVoices(config: Config): Voice[] {
   const voices = parsed.data;
   if (config.bootstrapVoice) {
     const existing = voices.find(v => v.id === config.bootstrapVoice);
-    if (existing) { existing.enabled = true; existing.resource_id = config.volc.resourceId; }
+    if (existing) { existing.enabled = true; existing.resource_id = config.volc.resourceId || existing.resource_id; }
     else voices.push({ id: config.bootstrapVoice, name: config.bootstrapVoiceName || config.bootstrapVoice,
       description: '用户在本地配置的测试音色，尚未确认作为角色声音。', languages: ['zh'], enabled: true, resource_id: config.volc.resourceId });
   }
   if (new Set(voices.map(v => v.id)).size !== voices.length) throw new DomainError('INVALID_CATALOG', '音色目录含重复 ID。');
-  return voices.map(v => ({ ...v, provider: 'volcengine', availability: v.enabled ? 'configured' : 'unconfigured', source: existsSync(customPath) ? 'local account allowlist' : 'example catalog + .env configuration' }));
+  return voices.map(v => ({ ...v, provider: 'volcengine', availability: v.enabled ? 'configured' : 'unconfigured', source: existsSync(customPath) ? 'local account allowlist (provider permission unverified)' : 'bundled public candidates + local configuration (provider permission unverified)' }));
 }
 
 export function configuredVoice(config: Config, id: string) {

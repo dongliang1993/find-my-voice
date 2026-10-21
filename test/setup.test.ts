@@ -23,6 +23,55 @@ test('setup derives resumable progress without saving, resetting or synthesizing
   assert.equal(calls, 0); assert.equal(s.store.export(s.config.ownerId).speeches.length, 0);
 });
 
+test('missing TTS credentials do not block grounded memories or identity; connection precedes paid audition', t => {
+  let calls = 0;
+  const x = setup({ async synthesize() { calls++; throw new Error('no paid calls during onboarding'); } }, { TTS_PROVIDER: 'volcengine' });
+  t.after(x.cleanup); const s = x.service;
+  const initial = s.setup(true).data;
+  assert.equal(initial.next_step, 'memory');
+  assert.deepEqual(initial.steps.map(step => step.id), ['memory', 'identity', 'connection', 'audition', 'voice']);
+  assert.equal(initial.steps.find(step => step.id === 'connection')!.state, 'upcoming');
+  assert.equal(initial.agent_handoff.target, 'current_conversation');
+  assert.equal(initial.agent_handoff.automatic_draft, true);
+  assert.equal(initial.agent_handoff.all_history_access, false);
+  assert.equal(initial.agent_handoff.user_confirmation_required, true);
+  const memory = s.memorySave({ request_id: 'auto-context-memory', entries: [entries[0]] });
+  assert.equal(s.context().memories.length, 0);
+  s.decide(memory.data.pending_id, true);
+  assert.equal(s.setup(true).data.next_step, 'identity');
+  const identity = s.identityUpdate({ request_id: 'auto-context-identity', base_version: 0, identity: persona,
+    memory_ids: s.context().memories.map(m => m.id), change_reason: '从有效记忆自动形成表达画像。' });
+  assert.equal(s.setup(true).data.steps.find(step => step.id === 'identity')!.state, 'awaiting_confirmation');
+  s.decide(identity.data.pending_id, true);
+  assert.equal(s.setup(true).data.next_step, 'connection');
+  assert.equal(s.setup(true).data.steps.find(step => step.id === 'connection')!.state, 'blocked');
+  assert.equal(s.setup(true).data.steps.find(step => step.id === 'audition')!.state, 'upcoming');
+  assert.equal(calls, 0);
+});
+
+test('API key alone exposes a bundled audition candidate without manual resource or speaker setup', t => {
+  const x = setup(undefined, { TTS_PROVIDER: 'volcengine', VOLC_API_KEY: 'candidate-test-key' }); t.after(x.cleanup);
+  const state = x.service.setup(true).data;
+  assert.equal(state.provider_configured, true);
+  assert.equal(state.connection.account_permissions_verified, false);
+  const voices = x.service.voiceList({}).data.voices;
+  assert.ok(voices.length > 0);
+  assert.equal(voices[0]!.resource_id, 'seed-tts-2.0');
+  assert.equal(x.service.context().identity.voice, null);
+  assert.equal(x.service.store.export(x.config.ownerId).speeches.length, 0);
+  // A private allowlist still overrides public candidates, including an intentionally empty list.
+  writeFileSync(resolve(x.dir, 'voices.json'), '[]');
+  assert.equal(x.service.setup(true).data.provider_configured, false);
+  assert.deepEqual(x.service.voiceList({}).data.voices, []);
+});
+
+test('an existing known bootstrap voice retains its catalog resource when only the key is configured', t => {
+  const x = setup(undefined, { TTS_PROVIDER: 'volcengine', VOLC_API_KEY: 'candidate-test-key',
+    VOLC_DEFAULT_VOICE: 'zh_female_vv_uranus_bigtts' }); t.after(x.cleanup);
+  assert.equal(x.service.setup(true).data.provider_configured, true);
+  assert.equal(x.service.voiceList({}).data.voices[0]!.resource_id, 'seed-tts-2.0');
+});
+
 test('bootstrap audio cannot finish setup; grounded identity, audition and voice each require their own effective state', async t => {
   const fixture = new FixtureProvider();
   const x = setup({ synthesize: input => fixture.synthesize(input) }, {

@@ -29,7 +29,7 @@ export function createMcpServer(service: VoiceService, local = false) {
   });
   server.registerTool('setup.start', {
     title: '初始化 Finding My Voice',
-    description: 'Begin or resume guided Finding My Voice setup: grounded memories, expression identity, Agent-designed voice auditions, then user-confirmed voice. Returns derived progress and the next step; never saves, approves, generates paid audio or resets existing work.',
+    description: 'Begin or resume setup in the CURRENT conversation. The host Agent automatically drafts grounded memories and its own expression identity from actually visible context, then requests user confirmation. No personality questionnaire or separate model key. Connect TTS only before Agent-designed auditions. Returns progress and a context-bound handoff; never reads all chat history, saves, approves, generates paid audio or resets work by itself.',
     inputSchema: {}, outputSchema,
     annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
   }, () => wrap(() => asResult(service.setup(local)))());

@@ -1,0 +1,11 @@
+node_modules/
+dist/
+releases/
+npm-shrinkwrap.json
+.env
+.env.*
+!.env.example
+data/
+test-results/
+playwright-report/
+*.log

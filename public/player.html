@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Finding My Voice · 语音</title>
+  <style>
+    *{box-sizing:border-box}body{margin:0;padding:16px;background:transparent;color:#172d32;font-family:system-ui,-apple-system,sans-serif}
+    .card{max-width:640px;margin:auto;padding:24px;border:1px solid #dbe5e3;border-radius:22px;background:linear-gradient(140deg,#f8fbf8,#edf5f4)}
+    header{display:flex;gap:12px;align-items:center}.mark{display:grid;place-items:center;width:42px;height:42px;border-radius:13px;background:#193e39;color:#d4f1dc;font-size:20px}
+    h1{font-size:17px;margin:0 0 5px;font-weight:650}.sub{font-size:12px;color:#637871}.badge{font-size:11px;border-radius:6px;padding:4px 7px;background:#e3ece7;margin-left:auto;max-width:150px}.badge.test{background:#f6e4cb;color:#735222}
+    .control{display:flex;align-items:center;gap:16px;margin-top:24px}.play{border:0;border-radius:50%;width:48px;height:48px;flex:none;background:#214b43;color:white;font-size:20px;cursor:pointer}.play:disabled{opacity:.45;cursor:default}.timeline{flex:1;min-width:0}input[type=range]{width:100%;accent-color:#214b43;cursor:pointer;margin:0;height:20px}.time{display:flex;justify-content:space-between;color:#74817d;font-size:11px;font-variant-numeric:tabular-nums}.status{min-height:20px;font-size:12px;color:#657970;margin-top:14px}.error{color:#a63c34}.footer{display:flex;gap:12px;justify-content:space-between;border-top:1px solid #dce5e0;margin-top:15px;padding-top:14px;font-size:12px}a{color:#315b50}details{max-width:80%}summary{cursor:pointer}.transcript{line-height:1.8;white-space:pre-wrap;font-size:14px;color:#344b43;margin:12px 0 0}button:focus-visible,input:focus-visible,a:focus-visible{outline:3px solid #b4cda3;outline-offset:3px}audio{display:none}
+    @media(max-width:380px){body{padding:8px}.card{padding:17px}.badge{font-size:10px;max-width:100px}h1{font-size:15px}}
+  </style>
+</head>
+<body>
+  <main class="card">
+    <header><div class="mark" aria-hidden="true">声</div><div><h1>Finding My Voice</h1><div class="sub" id="voice">等待语音结果</div></div><span class="badge" id="badge">按需表达</span></header>
+    <div class="control"><button class="play" id="play" aria-label="播放" disabled>▶</button><div class="timeline"><input id="seek" type="range" min="0" max="1000" value="0" aria-label="播放进度" disabled><div class="time"><span id="current">0:00</span><span id="duration">--:--</span></div></div></div>
+    <audio id="audio" preload="metadata" crossorigin="anonymous"></audio>
+    <p class="status" id="status" role="status">语音生成后，点击播放。</p>
+    <div class="footer"><details><summary>查看送入文本</summary><p class="transcript" id="transcript"></p></details><a id="download" hidden target="_blank" rel="noopener noreferrer">打开音频</a></div>
+  </main>
+  <script type="module">
+    const $=id=>document.getElementById(id);const audio=$('audio');let data=null;let metadataReady=false;
+    const format=n=>Number.isFinite(n)?`${Math.floor(n/60)}:${String(Math.floor(n%60)).padStart(2,'0')}`:'--:--';
+    const setStatus=(text,error=false)=>{$('status').textContent=text;$('status').classList.toggle('error',error)};
+    function safeUrl(value){const u=new URL(value);if(u.protocol==='https:'||(u.protocol==='http:'&&['127.0.0.1','localhost','[::1]'].includes(u.hostname)))return u.href;throw new Error('音频地址无效。')}
+    function render(value){
+      if(!value||typeof value.audio_url!=='string')return;
+      try{const url=safeUrl(value.audio_url);audio.pause();metadataReady=false;data=value;audio.src=url;audio.load();$('seek').value='0';$('seek').disabled=true;$('play').disabled=true;
+        $('voice').textContent=String(value.voice_name||value.voice_id||'语音回复');$('transcript').textContent=String(value.text||'');
+        $('badge').textContent=value.is_test_audio?'测试提示音':value.generation_mode==='seed-audio'?'声音风格实验':'语音回复';$('badge').classList.toggle('test',Boolean(value.is_test_audio));
+        if(value.spoken_text)$('transcript').textContent+=`\n\n供应商字幕：\n${value.spoken_text}`;
+        $('download').href=url;$('download').hidden=false;$('duration').textContent='--:--';$('current').textContent='0:00';
+        setStatus(value.is_test_audio?'这是链路测试提示音，不是真实 TTS 语音。':'正在加载音频…');
+      }catch(error){setStatus(error.message,true)}
+    }
+    audio.addEventListener('loadedmetadata',()=>{metadataReady=Number.isFinite(audio.duration)&&audio.duration>0;$('play').disabled=!metadataReady;$('seek').disabled=!metadataReady;$('duration').textContent=format(audio.duration);if(metadataReady&&!data?.is_test_audio)setStatus(data?.generation_mode==='seed-audio'?'已生成，试听并核对台词。':'已准备好，点击播放。')});
+    audio.addEventListener('play',()=>{$('play').textContent='Ⅱ';$('play').setAttribute('aria-label','暂停');setStatus(data?.is_test_audio?'正在播放测试提示音。':'正在播放')});
+    audio.addEventListener('pause',()=>{$('play').textContent='▶';$('play').setAttribute('aria-label','播放');if(!audio.ended&&metadataReady)setStatus('已暂停')});
+    audio.addEventListener('ended',()=>{$('play').textContent='▶';$('play').setAttribute('aria-label','播放');setStatus('播放结束，可以再次播放。')});
+    audio.addEventListener('timeupdate',()=>{$('current').textContent=format(audio.currentTime);if(metadataReady)$('seek').value=String(Math.round(audio.currentTime/audio.duration*1000))});
+    audio.addEventListener('error',()=>{$('play').disabled=true;$('seek').disabled=true;setStatus('音频加载失败或链接已过期。请在本地管理页刷新链接；播放不会重新生成音频。',true)});
+    $('play').addEventListener('click',async()=>{try{if(audio.paused){if(audio.ended)audio.currentTime=0;await audio.play()}else audio.pause()}catch{setStatus('播放未能开始，请再次点击或打开音频。',true)}});
+    $('seek').addEventListener('input',()=>{if(metadataReady)audio.currentTime=Number($('seek').value)/1000*audio.duration});
+    const apply=result=>{if(result?.isError){setStatus(result.content?.find(x=>x.type==='text')?.text||'语音生成失败。',true);return}render(result?.structuredContent?.data||result?.data||result?.structuredContent||result)};
+    let rpcId=0;const pending=new Map();
+    const notify=(method,params)=>window.parent.postMessage({jsonrpc:'2.0',method,params},'*');
+    function request(method,params){return new Promise((resolve,reject)=>{const id=++rpcId;const timer=setTimeout(()=>{pending.delete(id);reject(new Error('宿主未响应'))},5000);pending.set(id,{resolve,reject,timer});window.parent.postMessage({jsonrpc:'2.0',id,method,params},'*')})}
+    window.addEventListener('message',event=>{if(event.source!==window.parent)return;const m=event.data;if(!m||m.jsonrpc!=='2.0')return;
+      if(pending.has(m.id)){const p=pending.get(m.id);clearTimeout(p.timer);pending.delete(m.id);m.error?p.reject(m.error):p.resolve(m.result);return}
+      if(m.method==='ui/notifications/tool-result')apply(m.params);
+    });
+    if(window.parent!==window){request('ui/initialize',{appInfo:{name:'finding-my-voice-player',version:'0.1.0'},appCapabilities:{},protocolVersion:'2026-01-26'}).then(()=>notify('ui/notifications/initialized',{})).catch(()=>{if(!data)setStatus('等待宿主提供语音结果。')});}
+    if(window.openai?.toolOutput)apply(window.openai.toolOutput);
+    window.addEventListener('openai:set_globals',()=>{if(window.openai?.toolOutput)apply(window.openai.toolOutput)});
+    const route=/^\/player\/([a-f0-9-]+)$/.exec(location.pathname);
+    if(route){fetch(`/speech/${route[1]}${location.search}`).then(async r=>{const payload=await r.json();if(!r.ok)throw new Error(payload.error?.message||'音频链接不可用。');return payload}).then(render).catch(e=>setStatus(e.message,true));}
+  </script>
+</body>
+</html>

@@ -1,0 +1,44 @@
+{
+  "name": "find-my-voice",
+  "version": "0.1.0",
+  "bin": { "find-my-voice": "bin/find-my-voice.mjs" },
+  "files": ["bin/", "dist/*.js", "public/", "skills/", "native/", "scripts/", "src/", "test/", "tsconfig.json", "plugin.json", "mcp.json", "npm-shrinkwrap.json", ".env.example", "voices.example.json", "INSTALL.md", "install.command"],
+  "publishConfig": { "access": "public", "registry": "https://registry.npmjs.org/" },
+  "repository": { "type": "git", "url": "https://github.com/dongliang1993/find-my-voice.git" },
+  "homepage": "https://github.com/dongliang1993/find-my-voice#readme",
+  "type": "module",
+  "description": "Relationship-informed identity and on-demand voice for Codex and MCP Apps",
+  "engines": { "node": ">=22.13.0" },
+  "scripts": {
+    "dev": "tsx src/server.ts",
+    "dev:demo": "TTS_PROVIDER=fixture tsx src/server.ts",
+    "start": "node dist/server.js",
+    "stdio": "node dist/stdio.js",
+    "build": "tsc --noEmit && node scripts/build.mjs",
+    "prepare": "npm run build",
+    "test": "tsx --test test/*.test.ts",
+    "init": "node scripts/init-env.mjs",
+    "admin": "node scripts/open-admin.mjs",
+    "setup:codex": "node scripts/setup-codex.mjs",
+    "install:local": "node scripts/install-local.mjs",
+    "package:local": "node scripts/package-local.mjs",
+    "stage:release": "node scripts/stage-release.mjs",
+    "check:local": "node scripts/check-local.mjs",
+    "speak": "tsx scripts/speak.ts",
+    "verify:streaming": "node --import tsx scripts/verify-streaming.ts",
+    "export": "tsx scripts/export.ts"
+  },
+  "dependencies": {
+    "@hono/node-server": "^1.19.0",
+    "@modelcontextprotocol/ext-apps": "^1.0.1",
+    "@modelcontextprotocol/sdk": "^1.20.2",
+    "hono": "^4.9.0",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@types/node": "^22.18.0",
+    "esbuild": "^0.25.0",
+    "tsx": "^4.20.0",
+    "typescript": "^5.9.0"
+  }
+}

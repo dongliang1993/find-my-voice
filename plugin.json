@@ -1,0 +1,12 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "finding-my-voice",
+  "version": "0.1.0",
+  "description": "从共同经历形成角色表达，探索音色并按需生成语音。",
+  "extensions": { "com.openai": { "onboardingSkill": "./skills/finding-my-voice-setup/SKILL.md", "interface": {
+    "displayName": "Finding My Voice",
+    "shortDescription": "角色表达与按需语音",
+    "category": "Productivity",
+    "defaultPrompt": ["初始化 Finding My Voice，带我整理共同经历并由你选择声音。", "用你选定的声音回答我。"]
+  } } }
+}

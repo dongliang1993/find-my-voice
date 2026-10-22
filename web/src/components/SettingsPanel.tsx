@@ -37,13 +37,13 @@ export function SettingsPanel({ open, status, onOpenChange, onSaved }: Props) {
   const desktop = useMediaQuery('(min-width: 640px)');
   const title = '设置';
   const description = '所有凭证只保存在你本机的 ~/.find-my-voice。';
-  const body = <SettingsForm status={status} onSaved={onSaved} />;
+  const body = <SettingsForm status={status} onSaved={onSaved} pane={desktop ? 'dialog' : 'drawer'} />;
 
   if (desktop) {
     return (
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="max-h-[90dvh] overflow-y-auto border-border bg-popover sm:max-w-md">
-          <DialogHeader>
+        <DialogContent className="flex max-h-[75dvh] flex-col overflow-hidden border-border bg-popover p-0 sm:max-w-xl">
+          <DialogHeader className="flex-none p-4">
             <DialogTitle className="text-xl font-medium tracking-wide text-foreground">{title}</DialogTitle>
             <DialogDescription>{description}</DialogDescription>
           </DialogHeader>
@@ -54,18 +54,18 @@ export function SettingsPanel({ open, status, onOpenChange, onSaved }: Props) {
   }
   return (
     <Drawer open={open} onOpenChange={onOpenChange}>
-      <DrawerContent className="max-h-[92dvh] bg-popover">
-        <DrawerHeader className="text-left">
+      <DrawerContent className="flex max-h-[80dvh] flex-col bg-popover data-[vaul-drawer-direction=bottom]:max-h-[80dvh]">
+        <DrawerHeader className="flex-none text-left">
           <DrawerTitle className="text-xl font-medium tracking-wide text-foreground">{title}</DrawerTitle>
           <DrawerDescription>{description}</DrawerDescription>
         </DrawerHeader>
-        <div className="overflow-y-auto px-4 pb-[calc(1.25rem+env(safe-area-inset-bottom))]">{body}</div>
+        {body}
       </DrawerContent>
     </Drawer>
   );
 }
 
-function SettingsForm({ status, onSaved }: { status: AppStatus; onSaved: () => void }) {
+function SettingsForm({ status, onSaved, pane }: { status: AppStatus; onSaved: () => void; pane: 'dialog' | 'drawer' }) {
   const [tab, setTab] = useState<Tab>(status.brain.ready ? (status.voice.ready ? 'her' : 'voice') : 'brain');
   const [preset, setPreset] = useState<Preset>(PRESETS[0]!);
   const [brain, setBrain] = useState({ baseUrl: '', apiKey: '', model: '' });
@@ -105,11 +105,14 @@ function SettingsForm({ status, onSaved }: { status: AppStatus; onSaved: () => v
     }
   };
 
-  const tabs: [Tab, string, boolean][] = [['brain', '大脑', status.brain.ready], ['voice', '声音', status.voice.ready], ['her', '她', true]];
+  const tabs: [Tab, string, boolean][] = [['brain', '大脑', status.brain.ready], ['voice', '声音', status.voice.ready], ['her', 'Ta', true]];
+  const scrollPad = pane === 'drawer'
+    ? 'px-4 pb-[calc(1.25rem+env(safe-area-inset-bottom))]'
+    : 'p-4 pt-0';
 
   return (
-    <Tabs value={tab} onValueChange={value => setTab(value as Tab)} className="gap-5">
-      <TabsList className="w-full">
+    <Tabs value={tab} onValueChange={value => setTab(value as Tab)} className="flex min-h-0 flex-1 flex-col gap-5">
+      <TabsList className="mx-4 w-[calc(100%-2rem)] flex-none">
         {tabs.map(([id, label, ok]) => (
           <TabsTrigger key={id} value={id} className="gap-1.5">
             {label}
@@ -118,10 +121,10 @@ function SettingsForm({ status, onSaved }: { status: AppStatus; onSaved: () => v
         ))}
       </TabsList>
 
-      <form onSubmit={save} className="grid gap-5">
+      <form id="settings-form" onSubmit={save} className={cn('grid min-h-0 flex-1 content-start gap-5 overflow-y-auto', scrollPad)}>
         <TabsContent value="brain" className="grid gap-4">
           <SourceLine ok={status.brain.ready}>{SOURCE_LABEL[status.brain.source]}</SourceLine>
-          <p className="text-sm text-muted-foreground">她用 Claude Agent 驱动，需要一个 Anthropic 或兼容服务的 API Key。</p>
+          <p className="text-sm text-muted-foreground">Ta 用 Claude Agent 驱动，需要一个 Anthropic 或兼容服务的 API Key。</p>
           <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="服务商">
             {PRESETS.map(p => (
               <Button key={p.id} type="button" size="sm" role="radio" aria-checked={preset.id === p.id}
@@ -163,19 +166,21 @@ function SettingsForm({ status, onSaved }: { status: AppStatus; onSaved: () => v
 
         <TabsContent value="her" className="grid gap-4">
           <p className="text-sm text-muted-foreground">
-            她的性格写在 <code className="rounded bg-muted px-1 py-0.5 text-xs">~/.find-my-voice/IDENTITY.md</code>，
-            她对你的了解写在 <code className="rounded bg-muted px-1 py-0.5 text-xs">MEMORY.md</code>。可以直接编辑，下一条消息生效。
+            Ta 的性格写在 <code className="rounded bg-muted px-1 py-0.5 text-xs">~/.find-my-voice/IDENTITY.md</code>，
+            Ta 对你的了解写在 <code className="rounded bg-muted px-1 py-0.5 text-xs">MEMORY.md</code>。可以直接编辑，下一条消息生效。
           </p>
-          <Field id="her-name" label="她的名字">
+          <Field id="her-name" label="Ta 的名字">
             <Input id="her-name" value={name} onChange={e => setName(e.target.value)} maxLength={40} required />
           </Field>
         </TabsContent>
-
-        <Button type="submit" size="lg" disabled={saving} className="h-11 rounded-xl text-base">
-          {saving && <Loader2 className="animate-spin" />}
-          {saving ? '保存中…' : '保存'}
-        </Button>
       </form>
+
+      <Button type="submit" size="lg" disabled={saving}
+        className={cn('flex-none rounded-xl text-base', pane === 'drawer' && 'mx-4 mb-[calc(1.25rem+env(safe-area-inset-bottom))]')}
+        form="settings-form">
+        {saving && <Loader2 className="animate-spin" />}
+        {saving ? '保存中…' : '保存'}
+      </Button>
     </Tabs>
   );
 }

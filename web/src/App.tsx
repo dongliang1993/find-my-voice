@@ -67,7 +67,6 @@ export function App() {
           <Button variant="outline" onClick={() => setSettingsOpen(true)} aria-label="设置"
             className="label-mono relative h-9 rounded-full border-white/15 bg-transparent px-3.5 text-subtle hover:bg-white/5 dark:bg-transparent">
             <Settings className="size-3.5" />
-            <span className="hidden sm:inline">Settings</span>
             {needsSetup && <span className="absolute -top-0.5 -right-0.5 size-2 rounded-full bg-destructive" />}
           </Button>
         </header>
@@ -77,11 +76,9 @@ export function App() {
         <Composer status={chat.status} disabled={!online || !status?.brain.ready}
           onSend={chat.send} onInterrupt={chat.interrupt} />
 
-        <footer className="label-mono flex items-center justify-between border-t border-border px-5 pt-2.5 pb-[calc(0.625rem+env(safe-area-inset-bottom))] text-[10px] text-muted-foreground/70">
+        <footer className="label-mono flex items-center justify-between px-5 pt-1 pb-[calc(0.625rem+env(safe-area-inset-bottom))] text-[10px] text-muted-foreground/70">
           <span>Find my voice</span>
           <span className="flex items-center gap-1.5">
-            <span className={cn('size-1 rounded-full', online ? 'bg-primary' : 'bg-destructive')} />
-            {online ? 'Connected' : 'Reconnecting…'}
           </span>
         </footer>
 

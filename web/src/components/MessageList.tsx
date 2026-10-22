@@ -46,7 +46,7 @@ export function MessageList({ messages, status, name }: Props) {
             className="my-auto pb-[14vh] text-center">
             <p className="label-mono text-muted-foreground/70">— Channel open —</p>
             <p className="mt-4 text-2xl font-medium text-foreground">今晚想聊点什么？</p>
-            <p className="mt-2 text-sm text-muted-foreground">打字给{name || '她'}，她会回你。想听她的声音，就直接说。</p>
+            <p className="mt-2 text-sm text-muted-foreground">打字给{name || 'Ta'}，Ta 会回你。想听 Ta 的声音，就直接说。</p>
           </motion.div>
         )}
 
@@ -67,17 +67,17 @@ export function MessageList({ messages, status, name }: Props) {
               )}
               <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.32, ease: EASE_OUT }}
                 className={cn('flex gap-3', grouped ? 'mt-1.5' : 'mt-5', user && 'flex-row-reverse')}>
-                {!user && (grouped ? <span className="w-9 flex-none" /> : <Avatar name={name || '·'} className="mt-6 size-9 text-[20px]" />)}
+                {!user && (grouped ? <span className="w-9 flex-none" /> : <Avatar data-slot="头像" name={name || '·'} className="mt-1.5 size-9 text-[20px]" />)}
                 <div className={cn('flex min-w-0 max-w-[min(82%,540px)] flex-col', user && 'items-end')}>
                   {!grouped && (
                     <p className="label-mono mb-2 text-muted-foreground">{user ? 'You' : name}</p>
                   )}
                   {message.kind === 'voice' ? <VoiceBubble message={message} /> : (
                     <p className={cn(
-                      'rounded-md px-4 py-3 text-[15px] leading-relaxed wrap-anywhere whitespace-pre-wrap',
+                      'text-[14px] leading-snug wrap-anywhere whitespace-pre-wrap',
                       user
-                        ? 'border border-white/12 bg-secondary/70 text-foreground'
-                        : 'border border-white/8 bg-black text-foreground shadow-[0_1px_0_rgb(255_255_255/0.04)_inset]',
+                        ? 'rounded-md px-3 py-2 border border-white/12 bg-secondary/70 text-foreground'
+                        : 'bg-black text-foreground',
                     )}>
                       {message.text || ' '}
                     </p>

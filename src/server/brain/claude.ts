@@ -43,6 +43,8 @@ export class ClaudeBrain implements Brain {
   private closing = false;
   /** An API error was already shown for this turn; don't add a generic one. */
   private reportedError = false;
+  /** Lost-session is seen in both the error result and the crash that follows; report it once. */
+  private reportedLost = false;
 
   constructor(private options: ClaudeBrainOptions) {
     const workspace = resolve(options.dataDir, 'workspace');
@@ -83,7 +85,8 @@ export class ClaudeBrain implements Brain {
     try {
       for await (const message of this.session) this.handle(message);
     } catch (error) {
-      if (!this.closing) {
+      if (this.lostSession([(error as Error).message])) this.reportLost();
+      else if (!this.closing) {
         this.options.onLog?.(`brain stopped: ${(error as Error).message}`);
         this.sink?.({ type: 'error', code: 'BRAIN_CRASHED', message: '模型进程意外退出了，下一条消息会自动重连。' });
       }
@@ -112,7 +115,9 @@ export class ClaudeBrain implements Brain {
       return;
     }
     if (message.type === 'result') {
-      if (message.subtype !== 'success') {
+      if (message.subtype !== 'success' && this.lostSession(message.errors)) {
+        this.reportLost();
+      } else if (message.subtype !== 'success') {
         this.options.onLog?.(`turn ended: ${message.subtype}`);
         this.sink?.({ type: 'error', code: `BRAIN_${message.subtype.toUpperCase()}`, message: '这次没能回复完整，换个说法再试试？' });
       } else if (message.is_error && !this.reportedError) {
@@ -120,6 +125,19 @@ export class ClaudeBrain implements Brain {
       }
       this.endTurn();
     }
+  }
+
+  // The SDK has no reason code for this; its message is the only signal. Only
+  // meaningful when we asked to resume, so unrelated errors never match.
+  private lostSession(errors: readonly string[]) {
+    return Boolean(this.options.resumeSessionId) && errors.some(e => /no conversation found/i.test(e));
+  }
+
+  private reportLost() {
+    if (this.reportedLost) return;
+    this.reportedLost = true;
+    this.options.onLog?.('stored session is gone; starting a new one');
+    this.sink?.({ type: 'session_lost' });
   }
 
   private endTurn() {

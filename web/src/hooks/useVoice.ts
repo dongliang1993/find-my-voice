@@ -1,5 +1,5 @@
 import { useEffect, useRef, useSyncExternalStore } from 'react';
-import { audio } from '@/audio';
+import { audio } from '@/lib/audio';
 
 /** Re-renders when what is playing changes. */
 export function usePlaying() {

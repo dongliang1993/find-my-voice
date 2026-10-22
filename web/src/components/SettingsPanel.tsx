@@ -1,14 +1,15 @@
 import { useEffect, useState, type SubmitEvent } from 'react';
-import { ArrowUpRight, Loader2 } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
-import type { AppStatus, BrainSource } from '@shared/protocol';
+import type { AppStatus, BrainSource, PublicSettings } from '@shared/protocol';
 import { api } from '@/api';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Drawer, DrawerContent, DrawerDescription, DrawerHeader, DrawerTitle } from '@/components/ui/drawer';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Field } from '@/components/settings/Field';
+import { draftFrom, patchFrom, VoiceSettings, type VoiceDraft } from '@/components/settings/VoiceSettings';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { cn } from '@/lib/utils';
 
@@ -69,13 +70,14 @@ function SettingsForm({ status, onSaved, pane }: { status: AppStatus; onSaved: (
   const [tab, setTab] = useState<Tab>(status.brain.ready ? (status.voice.ready ? 'her' : 'voice') : 'brain');
   const [preset, setPreset] = useState<Preset>(PRESETS[0]!);
   const [brain, setBrain] = useState({ baseUrl: '', apiKey: '', model: '' });
-  const [voice, setVoice] = useState({ apiKey: '', voiceId: '', resourceId: '' });
+  const [settings, setSettings] = useState<PublicSettings | null>(null);
+  const [voice, setVoice] = useState<VoiceDraft>(() => draftFrom(null));
   const [name, setName] = useState(status.companionName);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     api.settings()
-      .then(s => setVoice(v => ({ ...v, voiceId: s.voice.voiceId, resourceId: s.voice.resourceId })))
+      .then(s => { setSettings(s); setVoice(draftFrom(s)); })
       .catch(() => toast.error('读取设置失败'));
   }, []);
 
@@ -88,14 +90,12 @@ function SettingsForm({ status, onSaved, pane }: { status: AppStatus; onSaved: (
     event.preventDefault();
     setSaving(true);
     try {
-      if (tab === 'brain') await api.saveSettings({ brain });
-      if (tab === 'voice') await api.saveSettings({ voice: {
-        ...(voice.apiKey ? { apiKey: voice.apiKey } : {}),
-        // Empty means "not loaded"; never overwrite a configured voice with blanks.
-        ...(voice.voiceId.trim() ? { voiceId: voice.voiceId.trim() } : {}),
-        ...(voice.resourceId.trim() ? { resourceId: voice.resourceId.trim() } : {}),
-      } });
-      if (tab === 'her') await api.saveSettings({ companion: { name } });
+      const next = tab === 'brain' ? await api.saveSettings({ brain })
+        : tab === 'voice' ? await api.saveSettings({ voice: patchFrom(voice) })
+        : await api.saveSettings({ companion: { name } });
+      // Keep the panel truthful even if it stays open: saved keys become "saved", typed secrets clear.
+      setSettings(next);
+      setVoice(draftFrom(next));
       toast.success('已保存');
       onSaved();
     } catch (error) {
@@ -151,17 +151,7 @@ function SettingsForm({ status, onSaved, pane }: { status: AppStatus; onSaved: (
 
         <TabsContent value="voice" className="grid gap-4">
           <SourceLine ok={status.voice.ready}>{status.voice.ready ? '声音已就绪' : '还不能发语音'}</SourceLine>
-          <p className="text-sm text-muted-foreground">语音由火山引擎豆包语音合成。在控制台开通「语音合成大模型」后创建 API Key。</p>
-          <Field id="voice-key" label="API Key" link="https://console.volcengine.com/speech/new/setting/apikeys">
-            <Input id="voice-key" type="password" value={voice.apiKey} onChange={e => setVoice({ ...voice, apiKey: e.target.value })}
-              placeholder={status.voice.ready ? '已保存，留空不修改' : '火山引擎 API Key'} autoComplete="off" />
-          </Field>
-          <Field id="voice-id" label="音色 ID">
-            <Input id="voice-id" value={voice.voiceId} onChange={e => setVoice({ ...voice, voiceId: e.target.value })} />
-          </Field>
-          <Field id="voice-resource" label="资源 ID">
-            <Input id="voice-resource" value={voice.resourceId} onChange={e => setVoice({ ...voice, resourceId: e.target.value })} />
-          </Field>
+          <VoiceSettings draft={voice} settings={settings} onChange={setVoice} />
         </TabsContent>
 
         <TabsContent value="her" className="grid gap-4">
@@ -191,24 +181,5 @@ function SourceLine({ ok, children }: { ok: boolean; children: React.ReactNode }
       <span className="size-1.5 rounded-full bg-current" />
       {children}
     </p>
-  );
-}
-
-function Field({ id, label, optional, link, children }: { id: string; label: string; optional?: boolean; link?: string; children: React.ReactNode }) {
-  return (
-    <div className="grid gap-2">
-      <div className="flex items-baseline justify-between">
-        <Label htmlFor={id} className="text-muted-foreground">
-          {label}
-          {optional && <span className="text-xs font-normal text-muted-foreground/70">可选</span>}
-        </Label>
-        {link && (
-          <a href={link} target="_blank" rel="noreferrer" className="inline-flex items-center gap-0.5 text-xs text-primary hover:underline">
-            去哪里拿 Key <ArrowUpRight className="size-3" />
-          </a>
-        )}
-      </div>
-      {children}
-    </div>
   );
 }

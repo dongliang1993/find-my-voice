@@ -44,6 +44,37 @@ test('stores the user message, streams text and stores the reply', async () => {
   assert.deepEqual(events.filter(e => e.type === 'status').map(e => e.type === 'status' && e.status), ['thinking', 'idle']);
 });
 
+test('a lost resume session is dropped and the same message is answered by a fresh brain', async () => {
+  const created: boolean[] = [];
+  const store = new ChatStore(mkdtempSync(join(tmpdir(), 'fmv-chat-')));
+  const events: ServerEvent[] = [];
+  const service = new ChatService({
+    store, voice: { speak: okVoice },
+    createBrain: ({ fresh }) => {
+      created.push(fresh);
+      if (!fresh) return new ScriptedBrain([{ type: 'session_lost' }]);
+      return new ScriptedBrain([{ type: 'text_delta', text: '我在' }]);
+    },
+  });
+  service.subscribe(e => events.push(e));
+  await service.send(randomUUID(), '在吗');
+  assert.deepEqual(created, [false, true]);
+  assert.deepEqual(store.recent().map(m => m.text), ['在吗', '我在']);
+  assert.equal(events.some(e => e.type === 'error'), false);
+});
+
+test('a lost session on a fresh brain is not retried forever', async () => {
+  let count = 0;
+  const store = new ChatStore(mkdtempSync(join(tmpdir(), 'fmv-chat-')));
+  const events: ServerEvent[] = [];
+  const service = new ChatService({ store, voice: { speak: okVoice },
+    createBrain: () => { count++; return new ScriptedBrain([{ type: 'session_lost' }]); } });
+  service.subscribe(e => events.push(e));
+  await service.send(randomUUID(), 'hi');
+  assert.equal(count, 2);
+  assert.ok(events.some(e => e.type === 'error'));
+});
+
 test('the same client id is never processed twice', async () => {
   const brain = new ScriptedBrain([{ type: 'text_delta', text: 'ok' }]);
   const { store, service } = setup(brain);

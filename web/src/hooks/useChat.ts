@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useReducer, useRef } from 'react';
 import type { ChatMessage, ClientEvent, CompanionStatus, ServerEvent } from '@shared/protocol';
-import { audio } from '@/audio';
+import { audio } from '@/lib/audio';
 
 export type Connection = 'connecting' | 'open' | 'closed';
 export type Notice = { id: number; message: string };

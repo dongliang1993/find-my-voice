@@ -2,9 +2,9 @@ import { useEffect, useState } from 'react';
 import { Captions, Play, Square } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
 import type { ChatMessage } from '@shared/protocol';
-import { audio } from '@/audio';
+import { audio } from '@/lib/audio';
 import { Button } from '@/components/ui/button';
-import { usePlaying } from '@/useVoice';
+import { usePlaying } from '@/hooks/useVoice';
 import { cn } from '@/lib/utils';
 
 const MAX_BARS = 28;

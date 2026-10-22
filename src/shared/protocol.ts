@@ -36,21 +36,31 @@ export const PCM_SAMPLE_RATE = 24000;
 // ---- REST: status and settings ----
 
 export type BrainSource = 'app' | 'claude-code' | 'environment' | 'none';
+export type VoiceProviderId = 'volcengine' | 'fish' | 'fixture';
+export type FishModel = 's1' | 's1-mini' | 'speech-1.6' | 'speech-1.5';
 export type AppStatus = {
   companionName: string;
   brain: { source: BrainSource; ready: boolean; model: string | null };
-  voice: { provider: 'volcengine' | 'fixture'; ready: boolean };
+  voice: { provider: VoiceProviderId; ready: boolean };
 };
 
 /** Settings as the browser sees them: secrets reduced to presence flags. */
 export type PublicSettings = {
   companion: { name: string };
   brain: { baseUrl: string; model: string; hasApiKey: boolean };
-  voice: { provider: 'volcengine' | 'fixture'; resourceId: string; voiceId: string; speechRate: number; timeoutMs: number; hasApiKey: boolean };
+  voice: {
+    provider: VoiceProviderId; speechRate: number; timeoutMs: number;
+    volcengine: { resourceId: string; voiceId: string; hasApiKey: boolean };
+    fish: { referenceId: string; model: FishModel; hasApiKey: boolean };
+  };
 };
 
 export type SettingsUpdate = {
   companion?: { name?: string };
   brain?: { baseUrl?: string; apiKey?: string; model?: string };
-  voice?: { apiKey?: string; resourceId?: string; voiceId?: string; speechRate?: number };
+  voice?: {
+    provider?: VoiceProviderId; speechRate?: number;
+    volcengine?: { apiKey?: string; resourceId?: string; voiceId?: string };
+    fish?: { apiKey?: string; referenceId?: string; model?: FishModel };
+  };
 };

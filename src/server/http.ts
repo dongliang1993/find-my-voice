@@ -7,16 +7,9 @@ import { createNodeWebSocket } from '@hono/node-ws';
 import { z } from 'zod';
 import type { ServerEvent } from '../shared/protocol.js';
 import { clientEventSchema } from './chat/client-events.js';
-import { maskSettings, settingsSchema, type SettingsPatch } from './config.js';
+import { maskSettings, settingsPatchSchema } from './config.js';
 import { DomainError, errorPayload } from './errors.js';
 import type { App } from './app.js';
-
-// Secrets may be cleared with "" but are otherwise only ever written, never read back.
-const patchSchema = z.object({
-  companion: settingsSchema.shape.companion.unwrap().partial().optional(),
-  brain: settingsSchema.shape.brain.unwrap().partial().optional(),
-  voice: settingsSchema.shape.voice.unwrap().partial().optional(),
-}).strict();
 
 export function createHttp(app: App, webRoot: string) {
   const http = new Hono();
@@ -44,7 +37,8 @@ export function createHttp(app: App, webRoot: string) {
 
   http.get('/api/settings', c => c.json(maskSettings(app.settings)));
   http.patch('/api/settings', async c => {
-    const patch = patchSchema.parse(await c.req.json()) as SettingsPatch;
+    // Secrets may be cleared with "" but are otherwise only ever written, never read back.
+    const patch = settingsPatchSchema.parse(await c.req.json());
     return c.json(maskSettings(await app.updateSettings(patch)));
   });
 

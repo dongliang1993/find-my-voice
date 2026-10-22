@@ -2,9 +2,14 @@
 export type BrainEvent =
   | { type: 'text_delta'; text: string }
   | { type: 'voice'; text: string; emotion: string | null }
-  | { type: 'error'; code: string; message: string };
+  | { type: 'error'; code: string; message: string }
+  /** The session to resume no longer exists; nothing was said this turn. */
+  | { type: 'session_lost' };
 
 export type BrainSink = (event: BrainEvent) => void;
+
+/** `fresh` starts a new session instead of resuming the stored one. */
+export type BrainFactory = (options: { fresh: boolean }) => Brain;
 
 export interface Brain {
   /** Runs one reply turn. Resolves when the companion has finished replying. */

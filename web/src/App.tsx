@@ -3,15 +3,15 @@ import { Settings } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
 import { toast } from 'sonner';
 import { api, type AppStatus } from '@/api';
-import { audio } from '@/audio';
+import { audio } from '@/lib/audio';
 import { Composer } from '@/components/Composer';
 import { Avatar, DotName } from '@/components/Identity';
 import { MessageList } from '@/components/MessageList';
 import { SettingsPanel } from '@/components/SettingsPanel';
 import { Button } from '@/components/ui/button';
 import { Toaster } from '@/components/ui/sonner';
-import { useChat } from '@/useChat';
-import { usePlaying, useVoiceGlow } from '@/useVoice';
+import { useChat } from '@/hooks/useChat';
+import { usePlaying, useVoiceGlow } from '@/hooks/useVoice';
 import { cn } from '@/lib/utils';
 
 export function App() {

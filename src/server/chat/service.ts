@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import type { Brain, BrainEvent } from '../brain/types.js';
+import type { Brain, BrainEvent, BrainFactory } from '../brain/types.js';
 import type { AudioInfo, ChatMessage, CompanionStatus, ServerEvent } from '../../shared/protocol.js';
 import type { ChatStore } from './store.js';
 
@@ -9,7 +9,7 @@ export type VoiceSpeaker = {
 
 export type ChatServiceOptions = {
   store: ChatStore;
-  createBrain: () => Brain;
+  createBrain: BrainFactory;
   voice: VoiceSpeaker;
   onLog?: (line: string) => void;
 };
@@ -61,8 +61,8 @@ export class ChatService {
     return message;
   }
 
-  private ensureBrain(): Brain {
-    if (!this.brain || this.brain.closed) this.brain = this.options.createBrain();
+  private ensureBrain(fresh = false): Brain {
+    if (!this.brain || this.brain.closed) this.brain = this.options.createBrain({ fresh });
     return this.brain;
   }
 
@@ -109,10 +109,11 @@ export class ChatService {
     await this.brain?.interrupt();
   }
 
-  private async runTurn(text: string) {
+  private async runTurn(text: string, fresh = false) {
     const { store } = this.options;
     // The current text bubble; a voice message closes it so later text starts a new one.
     let bubble: ChatMessage | null = null;
+    let lost = false;
     const closeBubble = () => {
       if (bubble) this.publish(store.update(bubble.id, { text: bubble.text.trim() }));
       bubble = null;
@@ -128,12 +129,23 @@ export class ChatService {
       } else if (event.type === 'voice') {
         closeBubble();
         this.startVoice(event.text, event.emotion);
+      } else if (event.type === 'session_lost') {
+        lost = true;
       } else {
         this.emit({ type: 'error', code: event.code, message: event.message });
       }
     };
-    await this.ensureBrain().reply(text, onEvent);
+    await this.ensureBrain(fresh).reply(text, onEvent);
     closeBubble();
+    if (!lost) return;
+    // The stored session is gone (data cleared, expired). Answer this same message from
+    // a new session; the chat history itself lives in our store and is unaffected.
+    await this.resetBrain();
+    if (fresh) {
+      this.emit({ type: 'error', code: 'BRAIN_SESSION_UNAVAILABLE', message: '没能开启新的对话，稍后再试试？' });
+      return;
+    }
+    await this.runTurn(text, true);
   }
 
   private startVoice(text: string, emotion: string | null) {

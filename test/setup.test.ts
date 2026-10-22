@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { setup, entries, persona } from './helpers.js';
+import { setup, entries, persona, memoryMarkdown, identityMarkdown, writeProfiles } from './helpers.js';
 import { FixtureProvider } from '../src/provider.js';
 import { projectRoot } from '../src/config.js';
 
@@ -15,11 +15,13 @@ test('setup derives resumable progress without saving, resetting or synthesizing
   assert.equal(s.setup(true).data.memory_count, 0);
   const p = s.memorySave({ request_id: 'setup-memory-1', entries: [entries[0]] });
   const waiting = s.setup(true).data.steps.find(step => step.id === 'memory')!;
-  assert.equal(waiting.state, 'awaiting_confirmation'); assert.equal(waiting.pending_id, p.data.pending_id);
+  assert.equal(waiting.state, 'current'); assert.equal(waiting.pending_id, undefined);
   s.decide(p.data.pending_id, false);
   assert.equal(s.setup(true).data.next_step, 'memory');
   const next = s.memorySave({ request_id: 'setup-memory-2', entries: [entries[0]] }); s.decide(next.data.pending_id, true);
-  assert.equal(s.setup(true).data.next_step, 'identity'); assert.equal(s.setup(true).data.memory_count, 1);
+  assert.equal(s.setup(true).data.next_step, 'memory'); assert.equal(s.setup(true).data.memory_count, 1);
+  s.profileWrite({ document: 'memory', content: memoryMarkdown, base_sha256: null });
+  assert.equal(s.setup(true).data.next_step, 'identity');
   assert.equal(calls, 0); assert.equal(s.store.export(s.config.ownerId).speeches.length, 0);
 });
 
@@ -33,16 +35,13 @@ test('missing TTS credentials do not block grounded memories or identity; connec
   assert.equal(initial.steps.find(step => step.id === 'connection')!.state, 'upcoming');
   assert.equal(initial.agent_handoff.target, 'current_conversation');
   assert.equal(initial.agent_handoff.automatic_draft, true);
-  assert.equal(initial.agent_handoff.all_history_access, false);
-  assert.equal(initial.agent_handoff.user_confirmation_required, true);
-  const memory = s.memorySave({ request_id: 'auto-context-memory', entries: [entries[0]] });
+  assert.equal(initial.agent_handoff.all_history_access, 'host_dependent');
+  assert.equal(initial.agent_handoff.document_review, 'normal_host_file_permissions');
   assert.equal(s.context().memories.length, 0);
-  s.decide(memory.data.pending_id, true);
+  s.profileWrite({ document: 'memory', content: memoryMarkdown, base_sha256: null });
   assert.equal(s.setup(true).data.next_step, 'identity');
-  const identity = s.identityUpdate({ request_id: 'auto-context-identity', base_version: 0, identity: persona,
-    memory_ids: s.context().memories.map(m => m.id), change_reason: '从有效记忆自动形成表达画像。' });
-  assert.equal(s.setup(true).data.steps.find(step => step.id === 'identity')!.state, 'awaiting_confirmation');
-  s.decide(identity.data.pending_id, true);
+  s.profileWrite({ document: 'identity', content: identityMarkdown, base_sha256: null });
+  assert.equal(s.context().identity.identity, null);
   assert.equal(s.setup(true).data.next_step, 'connection');
   assert.equal(s.setup(true).data.steps.find(step => step.id === 'connection')!.state, 'blocked');
   assert.equal(s.setup(true).data.steps.find(step => step.id === 'audition')!.state, 'upcoming');
@@ -83,6 +82,7 @@ test('bootstrap audio cannot finish setup; grounded identity, audition and voice
   const memoryIds = s.context().memories.map(m => m.id);
   const identity = s.identityUpdate({ request_id: 'setup-identity-1', base_version: 0, identity: persona, memory_ids: memoryIds, change_reason: '依据确认记忆建立测试画像。' });
   s.decide(identity.data.pending_id, true);
+  writeProfiles(s);
   assert.equal(s.setup(true).data.next_step, 'audition');
   await s.speak({ request_id: 'setup-audition-1', text: '测试数据，不是真实 TTS。', playback: 'none' }, true);
   assert.equal(s.setup(true).data.next_step, 'voice');
@@ -96,6 +96,9 @@ test('bootstrap audio cannot finish setup; grounded identity, audition and voice
   assert.equal(s.setup(false).data.playback.target, 'browser'); assert.equal(s.setup(false).data.playback.automatic_playback_verified, false);
   assert.ok(!JSON.stringify(s.setup(true)).includes('setup-test-key'));
   s.store.deactivateMemory(s.config.ownerId, memoryIds[0]!);
+  assert.equal(s.setup(true).data.ready, true); // Legacy SQL evidence is no longer the document authority.
+  const profile = s.context().profile_documents;
+  s.profileWrite({ document: 'identity', content: identityMarkdown + '\n## 修订\n新增测试判断。\n', base_sha256: profile.identity.sha256 });
   assert.equal(s.setup(true).data.ready, false);
 });
 

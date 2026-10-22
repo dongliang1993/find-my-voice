@@ -6,10 +6,11 @@ import { DomainError } from './errors.js';
 import type { Identity, VoiceConfiguration, MemorySave, IdentityUpdate, MemoryEntry } from './schema.js';
 
 export const digest = (value: unknown) => createHash('sha256').update(JSON.stringify(value)).digest('hex');
-export type Snapshot = { role_id: string; version: number; identity: Identity | null; voice: VoiceConfiguration | null; confirmed_at: string | null; change_reason?: string; memory_ids?: string[] };
+export type Snapshot = { role_id: string; version: number; identity: Identity | null; voice: VoiceConfiguration | null; confirmed_at: string | null; change_reason?: string; memory_ids?: string[]; profile_hash?: string };
+type DocumentIdentityUpdate = IdentityUpdate & { profile_hash?: string };
 export type Pending = {
   id: string; owner_id: string; role_id: string; kind: 'memory' | 'identity'; request_id: string;
-  payload_hash: string; payload: MemorySave | IdentityUpdate; state: 'pending' | 'approved' | 'rejected';
+  payload_hash: string; payload: MemorySave | DocumentIdentityUpdate; state: 'pending' | 'approved' | 'rejected';
   result: Record<string, unknown> | null; created_at: string;
 };
 export type Speech = {
@@ -17,6 +18,7 @@ export type Speech = {
   text: string; voice_id: string; voice_name: string; speech_rate: number; loudness_rate: number;
   provider: string; state: 'generating' | 'completed' | 'failed' | 'unknown' | 'expired';
   generation_mode: 'tts' | 'seed-audio'; direction: string | null; spoken_text: string | null;
+  profile_hash?: string | null;
   file_path: string | null; mime_type: string | null; duration_seconds: number | null;
   created_at: string; expires_at: string; error: string | null;
 };
@@ -54,6 +56,8 @@ export class Store {
       );
       PRAGMA user_version=1;
     `);
+    const speechColumns = this.db.prepare('PRAGMA table_info(speeches)').all();
+    if (!speechColumns.some(column => column.name === 'profile_hash')) this.db.exec('ALTER TABLE speeches ADD COLUMN profile_hash TEXT');
   }
   transaction<T>(callback: () => T): T {
     this.db.exec('BEGIN IMMEDIATE');
@@ -78,7 +82,7 @@ export class Store {
     if (!row) throw new DomainError('NOT_FOUND', '待确认变更不存在。', 404);
     return { ...row, payload: JSON.parse(String(row.payload)), result: row.result ? JSON.parse(String(row.result)) : null } as unknown as Pending;
   }
-  stage(owner: string, kind: Pending['kind'], payload: MemorySave | IdentityUpdate): Pending {
+  stage(owner: string, kind: Pending['kind'], payload: MemorySave | IdentityUpdate, profileHash?: string): Pending {
     return this.transaction(() => {
       const row = this.db.prepare('SELECT id,payload_hash FROM pending WHERE owner_id=? AND kind=? AND request_id=?').get(owner, kind, payload.request_id);
       if (row) {
@@ -89,16 +93,16 @@ export class Store {
         const update = payload as IdentityUpdate;
         const current = this.snapshot(owner, payload.role_id);
         if (update.base_version !== current.version) throw new DomainError('VERSION_CONFLICT', '角色版本已变化，请读取当前版本后重新生成变更。', 409, { current_version: current.version });
-        if (!current.identity && !update.identity) throw new DomainError('IDENTITY_REQUIRED', '请先建立角色画像，再确认角色声音。');
+        if (!current.identity && !update.identity && !profileHash) throw new DomainError('IDENTITY_REQUIRED', '请先生成 MEMORY.md 与 IDENTITY.md，再确认角色声音。');
         this.verifyMemoryIds(owner, payload.role_id, update.memory_ids);
       }
       const id = randomUUID();
       this.db.prepare('INSERT INTO pending(id,owner_id,role_id,kind,request_id,payload_hash,payload,created_at) VALUES(?,?,?,?,?,?,?,?)')
-        .run(id, owner, payload.role_id, kind, payload.request_id, digest(payload), JSON.stringify(payload), new Date().toISOString());
+        .run(id, owner, payload.role_id, kind, payload.request_id, digest(payload), JSON.stringify({ ...payload, ...(profileHash ? { profile_hash: profileHash } : {}) }), new Date().toISOString());
       return this.pending(owner, id);
     });
   }
-  decide(owner: string, id: string, approve: boolean, selectedIndices?: number[], validateVoice?: (id: string) => void): Pending {
+  decide(owner: string, id: string, approve: boolean, selectedIndices?: number[], validateVoice?: (id: string) => void, validateProfile?: (hash: string) => void): Pending {
     return this.transaction(() => {
       const pending = this.pending(owner, id);
       if (pending.state !== 'pending') return pending;
@@ -125,17 +129,22 @@ export class Store {
         }
         result = { memory_ids: ids, saved_count: ids.length, confirmed_at: now };
       } else {
-        const payload = pending.payload as IdentityUpdate;
+        const payload = pending.payload as DocumentIdentityUpdate;
         const current = this.snapshot(owner, pending.role_id);
         if (current.version !== payload.base_version) throw new DomainError('VERSION_CONFLICT', '确认期间角色已更新，请重新生成 Diff。', 409, { current_version: current.version });
         this.verifyMemoryIds(owner, pending.role_id, payload.memory_ids);
         if (payload.voice) validateVoice?.(payload.voice.voice_id);
+        if (payload.profile_hash) {
+          if (!validateProfile) throw new DomainError('PROFILE_VALIDATION_REQUIRED', '声音确认需要核对当前资料文档。');
+          validateProfile(payload.profile_hash);
+        }
         const next: Snapshot = {
           role_id: pending.role_id, version: current.version + 1,
           identity: payload.identity ?? current.identity, voice: payload.voice ?? current.voice,
           change_reason: payload.change_reason,
           // A voice-only update must not erase the already confirmed identity's evidence.
           memory_ids: payload.memory_ids.length || payload.identity ? payload.memory_ids : (current.memory_ids ?? []), confirmed_at: now,
+          ...(payload.profile_hash ? { profile_hash: payload.profile_hash } : {}),
         };
         this.db.prepare('INSERT INTO identities(owner_id,role_id,version,snapshot) VALUES(?,?,?,?)').run(owner, pending.role_id, next.version, JSON.stringify(next));
         result = { snapshot: next };
@@ -167,9 +176,9 @@ export class Store {
       if (Number(active.n) >= maxConcurrency) throw new DomainError('BUSY', '当前语音生成并发已满，请稍后再试。', 429);
       const recent = this.db.prepare('SELECT COUNT(*) AS n FROM speeches WHERE owner_id=? AND created_at>?').get(asset.owner_id, new Date(Date.now() - 60000).toISOString())!;
       if (Number(recent.n) >= requestsPerMinute) throw new DomainError('RATE_LIMITED', '语音生成频率已达到本地限制，请稍后再试。', 429);
-      this.db.prepare(`INSERT INTO speeches(id,owner_id,request_id,input_hash,role_id,identity_version,text,voice_id,voice_name,speech_rate,loudness_rate,provider,generation_mode,direction,state,created_at,expires_at)
-        VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(asset.id, asset.owner_id, asset.request_id, asset.input_hash, asset.role_id, asset.identity_version,
-        asset.text, asset.voice_id, asset.voice_name, asset.speech_rate, asset.loudness_rate, asset.provider, asset.generation_mode, asset.direction, asset.state, asset.created_at, asset.expires_at);
+      this.db.prepare(`INSERT INTO speeches(id,owner_id,request_id,input_hash,role_id,identity_version,text,voice_id,voice_name,speech_rate,loudness_rate,provider,generation_mode,direction,state,created_at,expires_at,profile_hash)
+        VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(asset.id, asset.owner_id, asset.request_id, asset.input_hash, asset.role_id, asset.identity_version,
+        asset.text, asset.voice_id, asset.voice_name, asset.speech_rate, asset.loudness_rate, asset.provider, asset.generation_mode, asset.direction, asset.state, asset.created_at, asset.expires_at, asset.profile_hash ?? null);
       return asset;
     });
   }
@@ -197,7 +206,7 @@ export class Store {
       exported_at: new Date().toISOString(), memories: this.memories(owner), identity: this.snapshot(owner),
       identity_versions: this.db.prepare('SELECT snapshot FROM identities WHERE owner_id=? ORDER BY version').all(owner).map(r => JSON.parse(String(r.snapshot))),
       decisions: this.pendingList(owner),
-      speeches: this.db.prepare('SELECT id,request_id,identity_version,text,voice_id,voice_name,provider,generation_mode,direction,spoken_text,state,created_at,expires_at,error FROM speeches WHERE owner_id=? ORDER BY created_at').all(owner),
+      speeches: this.db.prepare('SELECT id,request_id,identity_version,profile_hash,text,voice_id,voice_name,provider,generation_mode,direction,spoken_text,state,created_at,expires_at,error FROM speeches WHERE owner_id=? ORDER BY created_at').all(owner),
     };
   }
   close() { this.db.close(); }

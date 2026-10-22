@@ -9,13 +9,16 @@ const packageRoot = fileURLToPath(new URL('../', import.meta.url));
 const argv = process.argv.slice(2);
 const command = argv.shift() || 'help';
 const flags = new Map();
+const histories = [];
 for (let i = 0; i < argv.length; i++) {
   const name = argv[i];
-  if (['--json', '--no-prompt', '--help', '--connect', '--advanced'].includes(name)) { flags.set(name, true); continue; }
-  if (!['--install-dir', '--workspace', '--scope', '--client', '--agent', '--import-config'].includes(name) || !argv[i + 1] || argv[i + 1].startsWith('--')) {
+  if (['--json', '--no-prompt', '--help', '--connect', '--advanced', '--refresh-profile'].includes(name)) { flags.set(name, true); continue; }
+  if (!['--install-dir', '--workspace', '--scope', '--client', '--agent', '--import-config', '--history'].includes(name) || !argv[i + 1] || argv[i + 1].startsWith('--')) {
     console.error(`Unknown or incomplete option: ${name}`); process.exit(1);
   }
-  flags.set(name, argv[++i]);
+  const value = argv[++i];
+  if (name === '--history') histories.push(resolve(value));
+  else flags.set(name, value);
 }
 const help = `Find My Voice · local MCP + skills
 
@@ -26,7 +29,9 @@ const help = `Find My Voice · local MCP + skills
   npx find-my-voice setup --connect         Connect TTS privately when ready to audition (API Key only)
   npx find-my-voice setup --import-config FILE  Explicitly reuse provider settings from your own local .env
   npx find-my-voice setup --connect --advanced  Optional account-specific resource/speaker settings
-  npx find-my-voice setup --agent codex     Opt in to a NEW Codex CLI conversation (no existing chat context)
+  npx find-my-voice setup --agent codex --history FILE  Headless AI extraction of memory, image/personality/voice blocks
+  npx find-my-voice setup --agent request --history FILE  Prepare the same request for a host without CLI access
+  npx find-my-voice setup --agent codex --refresh-profile  Explicitly merge/update existing profile documents
   npx find-my-voice setup --json            Read progress without prompts, credential changes or paid audio
   npx find-my-voice doctor                  Check the installed MCP without paid audio
 
@@ -39,7 +44,7 @@ const markerPath = resolve(installationRoot, 'installation.json');
 const run = (file, args, cwd = appRoot) => execFileSync(file, args, { cwd, stdio: 'inherit' });
 
 try {
-  if (command !== 'setup' && ['--connect', '--advanced', '--import-config', '--agent'].some(flag => flags.has(flag))) throw new Error('Connection changes and Agent launch are supported only by setup.');
+  if (command !== 'setup' && (histories.length || ['--connect', '--advanced', '--import-config', '--agent', '--refresh-profile'].some(flag => flags.has(flag)))) throw new Error('Connection changes and AI profile extraction are supported only by setup.');
   const [major, minor] = process.versions.node.split('.').map(Number);
   if (major < 22 || (major === 22 && minor < 13)) throw new Error('Node.js >= 22.13 is required.');
   if (command === 'install') {
@@ -90,6 +95,7 @@ try {
       const args = ['scripts/setup-local.mjs', ...(flags.has('--json') ? ['--json'] : []), ...(flags.has('--no-prompt') ? ['--no-prompt'] : []),
         ...(flags.has('--connect') ? ['--connect'] : []), ...(flags.has('--advanced') ? ['--advanced'] : []),
         ...(flags.has('--import-config') ? ['--import-config', resolve(String(flags.get('--import-config')))] : []),
+        ...histories.flatMap(path => ['--history', path]), ...(flags.has('--refresh-profile') ? ['--refresh-profile'] : []),
         ...(flags.has('--agent') ? ['--agent', String(flags.get('--agent'))] : [])];
       const result = spawnSync(process.execPath, args, { cwd: appRoot, stdio: 'inherit',
         env: { ...process.env, FMV_SETUP_WORKSPACE: installation.workspace || process.cwd() } });

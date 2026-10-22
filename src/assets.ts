@@ -43,7 +43,7 @@ export class Assets {
       generation_mode: asset.generation_mode, speech_direction: asset.direction,
       spoken_text: asset.spoken_text, text_fidelity: asset.generation_mode === 'seed-audio' ? 'requires_review' : 'tts_input',
       voice_is_persistent: asset.voice_id !== 'designed-voice',
-      identity_version: asset.identity_version, mime_type: asset.mime_type,
+      identity_version: asset.identity_version, profile_hash: asset.profile_hash ?? null, mime_type: asset.mime_type,
       duration_seconds: asset.duration_seconds, expires_at: asset.expires_at,
       delivery: readPlaybackReport(this.config, asset.id),
       ...(localPath ? { local_audio_path: asset.file_path } : {}),

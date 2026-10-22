@@ -3,6 +3,11 @@ import { z } from 'zod';
 const text = (max: number) => z.string().trim().min(1).max(max);
 export const requestId = text(128).regex(/^[a-zA-Z0-9_-]+$/).min(8);
 export const roleId = z.literal('default').default('default');
+export const profileWriteSchema = z.object({
+  document: z.enum(['memory', 'identity']),
+  content: z.string().min(1).max(131072).describe('宿主 Agent 根据获授权历史生成或合并的完整 Markdown 正文，不含密钥。'),
+  base_sha256: z.string().regex(/^[a-f0-9]{64}$/).nullable().describe('更新前读取的文档 SHA-256；仅新建文件时传 null，防止覆盖并发修改。'),
+}).strict();
 export const memoryEntry = z.object({
   kind: z.enum(['shared_experience', 'discussion', 'disagreement', 'preference']),
   content: text(1500),

@@ -27,3 +27,9 @@ export const persona = {
   traits: [{ name: '直接', description: '先说结论，再说明理由。', evidence: ['测试材料1'] }],
   disagreement_style: '保留分歧并说明依据。', relationship_position: '一起进行声音实验的协作者。', uncertainties: ['声音质感尚待试听。'],
 };
+export const memoryMarkdown = '# 记忆\n\n## 回顾范围\n仅测试材料，不是真实历史。\n\n## 当前有效记忆\nM-001：交流偏好，保留分歧。来源：测试会话 1。\n\n## 记忆时间线\n### 日期不详\nM-001：共同讨论工具和表达方式。来源：测试会话 1。\n\n## 冲突与待核实\n本次测试未发现冲突。\n\n## 同步记录\n首次同步测试会话 1。\n';
+export const identityMarkdown = '# Agent 画像\n\n## 个人形象\n本次初始设计：一个带柔和光晕的抽象圆点，无图片资产。来源：测试材料。\n\n## 性格与关系\n可讨论的对话者，保留独立判断。来源：MEMORY.md M-001。\n\n## 声音\n表达设计：自然轻快，与圆点的轻盈感匹配；音色待试听确认。正式绑定以运行时为准。\n\n## 演化记录\n测试初次设计，声音质感尚未试听。\n';
+export function writeProfiles(service: VoiceService) {
+  service.profileWrite({ document: 'memory', content: memoryMarkdown, base_sha256: null });
+  service.profileWrite({ document: 'identity', content: identityMarkdown, base_sha256: null });
+}

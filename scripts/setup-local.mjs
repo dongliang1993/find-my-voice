@@ -4,17 +4,27 @@ import { fileURLToPath } from 'node:url';
 import { parseEnv } from 'node:util';
 import { createInterface } from 'node:readline/promises';
 import { emitKeypressEvents } from 'node:readline';
-import { spawnSync } from 'node:child_process';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const envPath = resolve(root, '.env');
 const argv = process.argv.slice(2);
 const interactive = process.stdin.isTTY && !argv.includes('--json') && !argv.includes('--no-prompt');
-const agentIndex = argv.indexOf('--agent');
-const agent = agentIndex >= 0 ? argv[agentIndex + 1] : undefined;
-if (agent && agent !== 'codex') throw new Error('The supported CLI handoff is --agent codex. Other clients can run the setup skill in their current conversation.');
 
 export function setupOptions(args) {
+  const value = flag => {
+    const index = args.indexOf(flag);
+    if (index < 0) return undefined;
+    if (!args[index + 1] || args[index + 1].startsWith('--')) throw new Error(`${flag} requires a value.`);
+    return args[index + 1];
+  };
+  const agent = value('--agent');
+  if (agent && !['codex', 'request'].includes(agent)) throw new Error('Use --agent codex for headless extraction, or --agent request to prepare a host request.');
+  const histories = [];
+  for (let i = 0; i < args.length; i++) if (args[i] === '--history') {
+    if (!args[i + 1] || args[i + 1].startsWith('--')) throw new Error('--history requires an authorized local file path.');
+    histories.push(resolve(args[++i]));
+  }
+  if (!agent && (histories.length || args.includes('--refresh-profile'))) throw new Error('--history and --refresh-profile require --agent codex or --agent request.');
   const importIndex = args.indexOf('--import-config');
   const importConfig = importIndex >= 0 ? args[importIndex + 1] : undefined;
   if (importIndex >= 0 && (!importConfig || importConfig.startsWith('--'))) throw new Error('--import-config requires a local .env file path.');
@@ -22,7 +32,7 @@ export function setupOptions(args) {
   const advanced = args.includes('--advanced');
   if (advanced && !connect) throw new Error('Use --connect --advanced to edit provider-specific settings.');
   if (args.includes('--json') && (connect || args.includes('--agent'))) throw new Error('--json is read-only; do not combine it with connection changes or Agent launch.');
-  return { connect, advanced, importConfig };
+  return { connect, advanced, importConfig, agent, histories, refresh: args.includes('--refresh-profile') };
 }
 
 export function providerSettings(content) {
@@ -99,12 +109,19 @@ async function main() {
     renameSync(`${envPath}.tmp`, envPath);
     console.log('本机语音配置已保存；请重载客户端 MCP 连接。记忆、画像及语音模式未修改。');
   }
-  const { loadConfig, VoiceService } = await import('../dist/cli-api.js');
+  const { loadConfig, VoiceService, extractSetupProfile } = await import('../dist/cli-api.js');
   const config = loadConfig(); const service = new VoiceService(config);
   // This CLI does not host a review server. The host agent obtains live review URLs from its MCP connection.
   service.assets.baseUrl = '';
   let state;
   try {
+    const profile = service.context().profile_documents;
+    if (options.agent && (options.agent === 'request' || !profile.layout.ready || options.refresh || options.histories.length)) {
+      console.log('setup · 由 AI 生成/同步 MEMORY.md 和分块 IDENTITY.md；无界面调用不会自动继承云端历史。不生成付费音频。');
+      const extraction = await extractSetupProfile(service, { sources: options.histories, prepareOnly: options.agent === 'request', onProgress: console.log });
+      if (extraction.status === 'request_prepared') console.log(`请在有历史权限的宿主提交此请求，并附上其引用的获授权材料：${extraction.request_path}`);
+      else console.log(`两份资料已保存：\n${extraction.memory}\n${extraction.identity}\n历史覆盖缺口：${extraction.coverage_limits.join('；') || '模型未报告额外缺口；仍不代表自动获得全部云端聊天。'}`);
+    } else if (options.agent) console.log('资料分块已就绪，本次不重写；同步新材料可加 --history FILE 或 --refresh-profile。');
     state = service.setup(true).data;
     delete state.management_url;
     state.steps = state.steps.map(({ review_url, ...step }) => step);
@@ -113,16 +130,10 @@ async function main() {
   else {
     console.log(`\n当前步骤：${state.steps.find(s => s.id === state.next_step)?.label || '已就绪'}\n${state.next_action}`);
     if (!state.provider_configured) console.log('现在无需配置语音。先由当前 Agent 整理记忆和画像；试听前再运行 setup --connect。');
-    console.log(`\n请在当前已有交流的 Agent 对话中说“初始化 Finding My Voice”，不要另开空白对话。\n完整交接口令：\n${state.resume_prompt}\n`);
-    console.log('记忆整理和选声使用宿主 Agent 的模型与可用上下文；CLI 本身不会读取所有历史对话，也不会代你确认保存。');
-  }
-  if (agent) {
-    if (!process.stdin.isTTY) throw new Error('Run --agent codex from an interactive terminal, or continue setup in your current agent conversation.');
-    console.log('注意：--agent codex 将启动新的 CLI 对话，不会继承当前聊天。需要当前交流内容时，请取消并回到原对话初始化。');
-    const result = spawnSync('codex', [state.resume_prompt], { cwd: process.env.FMV_SETUP_WORKSPACE || process.cwd(), stdio: 'inherit' });
-    if (result.error?.code === 'ENOENT') throw new Error('Codex CLI was not found. Open your client and send the setup prompt shown above.');
-    if (result.error) throw result.error;
-    process.exitCode = result.status ?? 1;
+    console.log(`\n记忆文档：${state.profile_documents.memory.path}\n表达画像：${state.profile_documents.identity.path}`);
+    if (!state.profile_documents.layout.ready) console.log(`\n可在当前 Agent 对话中说“初始化 Finding My Voice”。\n完整交接口令：\n${state.resume_prompt}\n`);
+    else console.log('两份资料分块已就绪；按当前步骤继续，不必重复初始化。');
+    console.log('也可用 setup --agent codex --history FILE 无界面提取；--history 可重复传入历史、原生记忆或已有形象描述。没有 CLI 时用 --agent request 准备同一请求。正式声音仍由你确认。');
   }
 }
 if (process.argv[1] && realpathSync(process.argv[1]) === fileURLToPath(import.meta.url)) {

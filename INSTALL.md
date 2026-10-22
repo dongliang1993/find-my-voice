@@ -9,12 +9,37 @@ npx find-my-voice setup
 
 `install` 把服务复制到固定目录 `~/.find-my-voice/app`，安装运行时依赖并注册本机 MCP 与三个 Skill。入口不会指向 npx 缓存，升级也保留本机 `.env` 和 `data/`。默认安装到个人 Codex，可用 `--workspace /path/to/workspace` 仅注册一个工作区，或用 `--client manual` 生成其他本地 MCP 客户端的连接描述。
 
-`setup` 不再弹出凭证、资源 ID 或测试音色问卷。重载客户端后，在**当前已有交流的 Agent 对话**中说“初始化 Finding My Voice”，Agent 会自动提取有来源的共同经历和自己的表达画像，展示草稿供你修改与确认；保存仍由你确认。CLI 只检查进度并给出交接口令，不能把终端连接到正在进行的聊天，也不拥有全部历史。
+`setup` 是两份文档生成、形象检查和后续选声的统一入口，不弹出凭证、资源 ID 或测试音色问卷。可在原 Agent 对话中说“初始化 Finding My Voice”，由具有历史权限的宿主提取；也可用 `setup --agent codex --history FILE` 调用官方 `codex exec` 无界面生成并保存。模型负责理解和写作，脚本只提供请求、检查结构和并发、保留备份。没有 CLI 时用 `--agent request` 生成同一请求交给原宿主。文档写入不增加逐条 MCP 审核。
 
-流程为：自动整理共同经历 → 确认记忆与表达画像 → 试听前连接语音服务 → Agent 选声试听 → 确认正式声音。没有语音凭证也能完成前面的记忆与画像。无需另配用于提取的模型 API Key；分析由当前宿主 Agent 完成。
+流程为：读取旧资料和已授权历史/原生记忆 → 生成或同步日期化 MEMORY.md → 检查已有形象，无则由模型设计 → 形成性格与匹配的声音块，保存 IDENTITY.md → 连接语音 → Agent 选声试听 → 确认正式声音。无界面入口使用既有 Codex 登录、隔离项目/自定义 provider 配置，不另索取模型 API Key；没有语音凭证也能完成文档。无界面进程不会自动继承全部 ChatGPT 云端历史。
+
+## 两份本地基础资料
+
+默认安装下的主文件为：
+
+```text
+~/.find-my-voice/app/data/MEMORY.md
+~/.find-my-voice/app/data/IDENTITY.md
+```
+
+自定义数据目录时，以 `setup.start` 或 `setup --json` 的 `profile_documents` 路径为准。
+
+- `MEMORY.md`：回顾范围、当前有效记忆、按日期且关联 session 的记忆时间线、冲突与待核实、同步记录。偏好改变时当前值更新、旧版本标记被替代并保留；不是简单“最后一句覆盖”，也不是工程日志。
+- `IDENTITY.md`：个人形象、性格与关系、声音、演化记录。先沿用已有形象，没有才根据历史设计具体初始形象并标明设计性质；以第一人称理解“用户眼中的我”。声音表达与形象气质协调，候选设计不等于已确认音色，实际绑定以运行时已确认 voice 为准。
+
+完整格式与冲突/同步规则在 `skills/identity-evolution/references/profile-format.md`，Skill 与无界面请求共用。`setup --json` 的 `profile_documents.layout` 报告缺块，旧格式保留并进入迁移，不删除重置；结构合格不代表程序已验证所有历史事实。文本形象设计不冒充已生成头像图片。
+
+两份 Markdown 是记忆与画像的主要资料，可用本地全文搜索，也通过 `finding-my-voice://profile/memory`、`finding-my-voice://profile/identity` 读取。后续宿主按主题读取相关段落，再组织回复和 TTS 台词；更新时先读旧文档、查证历史并合并，不每轮重塑性格。资料不会更改底层模型，也不会自动进入所有无关会话的系统上下文。
+
+宿主可用正常文件编辑能力生成文档，或调用 `profile.write`（新建 `base_sha256: null`，更新使用刚读取的哈希）。工具只写两份指定文件，不负责历史读取；更新保留私有 `profile-history/*.bak`，哈希冲突要求重新读取合并。文档单份最大 256 KiB。初始化不生成占位模板，不把两次安装排障当成完整关系历史。能否读取全部历史取决于宿主工具和权限，文档必须说明已读与缺失范围。
+
+SQLite 保留声音配置、音频、旧版记忆和审核记录；旧内容可作有来源的迁移参考，不再作为新 Markdown 初始化的前置条件。旧拒绝草稿不会自动写入文档或阻塞初始化。正式声音确认仍独立进行。
 
 ```sh
 npx find-my-voice setup --json  # Agent 读取进度，不询问凭证、不生成收费音频
+npx find-my-voice setup --agent codex --history /path/to/history.json --history /path/to/native-memory.md
+npx find-my-voice setup --agent request --history /path/to/history.json  # 无 CLI 时生成同一请求
+npx find-my-voice setup --agent codex --refresh-profile  # 显式合并更新已有文档
 npx find-my-voice setup --connect  # 到试听阶段，私下录入语音服务 API Key（不回显）
 npx find-my-voice setup --import-config /path/to/your/private/.env  # 显式复用自己的语音配置
 npx find-my-voice doctor        # 检查本机 MCP 连接
@@ -47,7 +72,7 @@ sh install.command --workspace /path/to/workspace
 sh install.command --client manual
 ```
 
-安装器会安装锁定的依赖、生成私有配置、编译服务与原生 PCM 播放器，连接本地 MCP 验证六个工具与 setup 入口，然后注册 MCP 和 Skill。验证不生成付费音频。已有 `.env`、记忆、角色与音频不会被覆盖。依赖下载和本机配置修改仍由客户端执行权限控制。
+安装器会安装锁定的依赖、生成私有配置、编译服务与原生 PCM 播放器，验证本地七个工具与 setup 入口，然后注册 MCP 和 Skill。验证不生成付费音频或个人资料。已有 `.env`、Markdown、旧记录与音频不会被覆盖。依赖下载和本机配置修改仍由客户端执行权限控制。
 
 试听前运行 `npx find-my-voice setup --connect`，只需私下填写你自己的火山 API Key；资源参数由候选目录提供，Agent 使用 `voice.list` 选择候选，不需要你找 speaker ID。已有本机配置时，用 `setup --import-config FILE` 显式复用；仅复制语音服务字段，不复制管理令牌、用户身份、数据目录、记忆或语音模式。
 
@@ -67,11 +92,13 @@ VOLC_API_KEY=<你的 API Key>
 
 > 初始化 Finding My Voice，带我整理共同经历并由你选择声音。
 
-setup 会串起：自动提出共同经历并确认 → 自动形成表达画像并确认 → 连接语音服务 → Agent 设计声音并试听 → 确认正式声音。进度来自已保存的数据，可以随时说“继续 Finding My Voice setup”，不需要记住工具名。真实试听会产生供应商用量，开始前会说明并征求同意；读取进度和整理草稿不会调用付费音频接口。
+setup 根据实际文件继续：生成 MEMORY.md → 生成 IDENTITY.md → 连接语音 → 设计并试听 → 确认声音。中断后可随时继续，不能把待生成的文档说成已完成。真实试听会产生供应商用量，开始前会说明并征求同意；读取状态和生成资料不调用付费音频接口。
 
-新安装没有其他聊天的全部历史。Agent 使用当前可见交流、宿主实际提供的记忆、已确认项目记忆或明确授权的材料，保留来源并区分推断，不会扫描聊天数据库或复制作者的角色。材料不足时才询问必要信息，不让你先填写性格问卷。记忆与初步画像可一起预览；存储仍先确认记忆，再引用实际记忆 ID 确认画像。
+新安装不携带作者的历史或人格。宿主应使用自身已授权的历史搜索、会话读取和原生记忆，尽量覆盖全部可访问历史，分批整理并记录范围。没有读取能力时如实说明缺口，允许导入材料，不假装 MCP 天生能看到所有聊天，也不绕过权限扫描私有数据库。文档保留来源、区分事实与推断，并排除密钥等敏感信息。
 
-`setup --agent codex` 仅是显式选择的新 CLI 对话入口，不继承你正在进行的聊天。需要利用当前交流时，应在原对话中初始化，而不是使用此选项。若客户端无法热加载插件，应先重载；必须新开会话时，可提供原会话摘要或明确授权的材料，不能假定历史自动转移。
+正式声音和旧版逐条存储的审核表单明确提供“确认保存 / 暂不决定 / 拒绝这份草稿”。关闭、取消、拒绝填写或表单不可用时保留待确认。没有表单时，Agent 给出审核链接和完整 `review_command`，由你本人执行。文档生成不走这层审核。旧拒绝记录不自动撤销；新审核请求需用新 ID，查询旧 ID 只返回旧决定。
+
+`setup --agent codex` 现在是无界面提取而非交互聊天入口，不需要 TTY。新建资料必须用 `--history FILE` 明确选择来源，可重复传入历史导出、原生记忆及已有形象描述（Markdown、文本、JSON/JSONL；不接受目录或凭证文件）。没有新增来源时，可基于现有 MEMORY 显式刷新；完整分块已就绪则默认不重写。请求和原始结果保存在私有 `data/setup-runs/`，失败或输出缺块不覆盖两份正式文档；提取期间文件变化则拒绝覆盖，保存仍使用哈希检查和备份。宿主原生 memory 只有通过明确提供的材料或宿主已授权能力才能同步，当前不实现后台自动双向同步。
 
 默认仅在明确请求语音后生成。若希望长期让 Agent 判断何时说话，在本机 `.env` 设置下面两项并重启 MCP：
 
@@ -82,8 +109,10 @@ LOCAL_AUDIO_PLAYBACK=stream
 
 固定音色 TTS 可以边接收边从本机播放，成功后保存 WAV。可以说“只用文字”或“停止播放”。本机系统播放不等于网页或手机端自动播放。
 
+日常语音调用统一为 `Agent → MCP voice.speak → 常驻 VoiceService → TTS 适配器 → 播放与归档`。Agent 通常只提交 `request_id` 与 `text`，无需编写转换/播放代码、读取凭证或处理供应商协议。工具断连时保留文字并提示重连，不自动改用脚本。CLI 必须显式带 `--diagnostic`，只用于用户要求的开发排障，不作为对话默认后备。服务返回 `service_execution` 与 `delivery`；服务管理本地播放时，不再手动播放归档文件。此约定同时写入 Skill、MCP 发现说明与 `voice_api` 上下文；更改后需要重连 MCP 才能刷新进程及工具说明。
+
 ## 检查与数据位置
 
-客户端应能发现 `setup.start`、`memory.save`、`identity.update`、`voice.list`、`voice.speak`，本地还包括 `voice.control`。先调用 `setup.start` 检查连接与进度；单纯读取状态不生成音频。也可在安装目录运行 `npm run check:local`，重复做不计费的连接检查。
+客户端应能发现 `setup.start`、`profile.write`、`voice.list`、`voice.speak`、确认声音用的 `identity.update`，以及兼容旧流程的 `memory.save`；本地另有 `voice.control`。先调用 `setup.start` 获取文件路径与进度；也可在安装目录运行 `npm run check:local` 检查连接，不生成音频。
 
-`.env` 保存私有凭证，`data/` 保存本机记忆、角色、试听和音频。分享安装目录前排除这些文件。卸载时从客户端移除该 MCP 和本包对应的 Skill 链接；先保留 `data/`，需要迁移时再由你决定如何处理。
+`.env` 保存私有凭证，`data/` 保存两份主文档、私有备份、声音配置和音频。分享代码或安装包前排除整个私有目录。卸载时先保留 `data/`；迁移可复制两份文档，声音和记录另行迁移。导出记录也包含当前两份 Markdown 正文。

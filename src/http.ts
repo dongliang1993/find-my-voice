@@ -57,7 +57,7 @@ export function createHttpApp(service: VoiceService) {
       voices: listVoices(service.config), speeches: service.store.export(service.config.ownerId).speeches.slice(-20).reverse(),
       configuration: { provider: service.config.provider, credentials_configured: credentials,
         api_mode: service.config.apiMode,
-        resource_configured: Boolean(service.config.volc.resourceId), bootstrap_voice_configured: Boolean(service.config.bootstrapVoice),
+        resource_configured: Boolean(service.config.volc.resourceId || listVoices(service.config).some(v => v.enabled && v.resource_id)), bootstrap_voice_configured: Boolean(service.config.bootstrapVoice),
         max_characters: service.config.maxCharacters },
     });
   });
@@ -70,7 +70,7 @@ export function createHttpApp(service: VoiceService) {
     const body = z.object({ id: z.string().uuid() }).strict().parse(await c.req.json());
     service.store.deactivateMemory(service.config.ownerId, body.id); return c.json({ ok: true });
   });
-  app.get('/api/export', c => c.json(service.store.export(service.config.ownerId)));
+  app.get('/api/export', c => c.json({ ...service.store.export(service.config.ownerId), profile_documents: service.context().profile_documents }));
   app.get('/api/audio/:id/refresh', c => c.json(service.assets.publicResult(service.store.speech(service.config.ownerId, c.req.param('id')))));
   // Owner UI provides a concrete way to test/audition voices without another MCP business tool.
   app.post('/api/speak', async c => c.json(await service.speak(await c.req.json(), true, false)));

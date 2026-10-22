@@ -72,11 +72,29 @@ test('explicit legacy credential import replaces a previous API key without leak
 
 test('read-only JSON rejects credential mutations and Agent launch; missing credentials never prompt on a pipe', t => {
   const x = isolatedSetup(t);
-  for (const args of [['--json', '--connect'], ['--json', '--agent', 'codex'], ['--advanced'], ['--connect'], ['--import-config']]) {
+  for (const args of [['--json', '--connect'], ['--json', '--agent', 'codex'], ['--json', '--agent', 'request'], ['--advanced'], ['--connect'], ['--import-config'], ['--agent'], ['--history'], ['--refresh-profile']]) {
     const result = x.run(args);
     assert.equal(result.status, 1, JSON.stringify(args));
     assert.equal(readFileSync(x.envFile, 'utf8'), x.content);
   }
+});
+
+test('setup request fallback works without TTY or credentials and retains multiple explicit history files', t => {
+  const x = isolatedSetup(t);
+  mkdirSync(resolve(x.dir, 'skills/identity-evolution/references'), { recursive: true });
+  copyFileSync(resolve(projectRoot, 'skills/identity-evolution/references/profile-format.md'), resolve(x.dir, 'skills/identity-evolution/references/profile-format.md'));
+  const sources = [resolve(x.dir, 'session.json'), resolve(x.dir, 'native-memory.md')];
+  writeFileSync(sources[0]!, '{"messages":[]}'); writeFileSync(sources[1]!, '仅测试材料。');
+  const result = x.run(['--agent', 'request', ...sources.flatMap(path => ['--history', path])]);
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(readFileSync(x.envFile, 'utf8'), x.content);
+  const state = JSON.parse(x.run(['--json']).stdout);
+  assert.equal(state.profile_documents.ready, false);
+  assert.equal(state.next_step, 'memory');
+  const request = result.stdout.match(/提取请求已准备：([^\n]+)/)![1]!;
+  const content = readFileSync(request, 'utf8');
+  for (const source of sources) assert.ok(content.includes(source));
+  assert.equal(statSync(request).mode & 0o777, 0o600);
 });
 
 test('private setup updates only requested keys, preserves other configuration and rejects newline injection', () => {

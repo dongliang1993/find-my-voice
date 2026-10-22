@@ -44,7 +44,7 @@ export function SettingsPanel({ open, status, onOpenChange, onSaved }: Props) {
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent className="max-h-[90dvh] overflow-y-auto border-border bg-popover sm:max-w-md">
           <DialogHeader>
-            <DialogTitle className="font-heading text-2xl font-medium text-mist">{title}</DialogTitle>
+            <DialogTitle className="text-xl font-medium tracking-wide text-foreground">{title}</DialogTitle>
             <DialogDescription>{description}</DialogDescription>
           </DialogHeader>
           {body}
@@ -56,7 +56,7 @@ export function SettingsPanel({ open, status, onOpenChange, onSaved }: Props) {
     <Drawer open={open} onOpenChange={onOpenChange}>
       <DrawerContent className="max-h-[92dvh] bg-popover">
         <DrawerHeader className="text-left">
-          <DrawerTitle className="font-heading text-2xl font-medium text-mist">{title}</DrawerTitle>
+          <DrawerTitle className="text-xl font-medium tracking-wide text-foreground">{title}</DrawerTitle>
           <DrawerDescription>{description}</DrawerDescription>
         </DrawerHeader>
         <div className="overflow-y-auto px-4 pb-[calc(1.25rem+env(safe-area-inset-bottom))]">{body}</div>
@@ -182,7 +182,7 @@ function SettingsForm({ status, onSaved }: { status: AppStatus; onSaved: () => v
 
 function SourceLine({ ok, children }: { ok: boolean; children: React.ReactNode }) {
   return (
-    <p className={cn('flex items-center gap-2 text-sm', ok ? 'text-ok' : 'text-destructive')}>
+    <p className={cn('flex items-center gap-2 text-sm', ok ? 'text-primary' : 'text-destructive')}>
       <span className="size-1.5 rounded-full bg-current" />
       {children}
     </p>

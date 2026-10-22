@@ -2,13 +2,15 @@
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 
-/* Midnight radio. shadcn/ui nova tokens, mapped onto a deep-indigo night with
-   her voice in warm amber. The app is always dark, so there is one palette.
+/* Radio console. shadcn/ui nova tokens on a pure-black panel with an indigo
+   glow and a dot grid. Mint is the only colour, reserved for live states.
    --voice (0..1) is written every frame from her live loudness. */
 
 @theme inline {
-  --font-sans: 'LXGW WenKai Screen', 'Kaiti SC', 'STKaiti', serif;
-  --font-heading: 'Fraunces', 'Songti SC', serif;
+  --font-sans: 'Space Grotesk', 'PingFang SC', 'Noto Sans SC', 'Microsoft YaHei', sans-serif;
+  --font-mono: 'Space Mono', 'PingFang SC', 'Noto Sans SC', ui-monospace, monospace;
+  --font-heading: var(--font-mono);
+  --font-dot: 'Doto', var(--font-mono);
 
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -29,12 +31,9 @@
   --color-input: var(--input);
   --color-ring: var(--ring);
 
-  /* Midnight-radio extras */
-  --color-night: var(--night);
-  --color-mist: var(--mist);
-  --color-mist-foreground: var(--mist-foreground);
-  --color-amber-hot: var(--amber-hot);
-  --color-ok: var(--ok);
+  /* Console extras */
+  --color-subtle: var(--subtle);
+  --color-mint-deep: var(--mint-deep);
 
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
@@ -49,71 +48,89 @@
   color-scheme: dark;
   --voice: 0;
 
-  --background: oklch(0.13 0.04 280);
-  --foreground: oklch(0.93 0.03 290 / 0.9);
-  --card: oklch(0.27 0.08 280 / 0.55);
-  --card-foreground: var(--foreground);
-  --popover: oklch(0.2 0.07 280);
-  --popover-foreground: var(--foreground);
-  --primary: oklch(0.82 0.13 65);
-  --primary-foreground: oklch(0.13 0.04 280);
-  --secondary: oklch(0.27 0.08 280 / 0.55);
-  --secondary-foreground: var(--foreground);
-  --muted: oklch(0.27 0.08 280 / 0.55);
-  --muted-foreground: oklch(0.85 0.04 290 / 0.6);
-  --accent: oklch(0.82 0.13 65 / 0.1);
-  --accent-foreground: oklch(0.88 0.1 70);
-  --destructive: oklch(0.75 0.14 25);
-  --border: oklch(0.85 0.08 290 / 0.12);
-  --input: oklch(0.85 0.08 290 / 0.14);
-  --ring: oklch(0.82 0.13 65 / 0.7);
-  --radius: 0.875rem;
+  --background: #000000;
+  --foreground: #fcfcfc;
+  --card: #0e0e10;
+  --card-foreground: #fcfcfc;
+  --popover: #0b0b12;
+  --popover-foreground: #fcfcfc;
+  --primary: #5cffc7;
+  --primary-foreground: #03140e;
+  --secondary: #1b1d2f;
+  --secondary-foreground: #fcfcfc;
+  --muted: #131318;
+  --muted-foreground: #a0a1a2;
+  --accent: rgb(92 255 199 / 0.1);
+  --accent-foreground: #5cffc7;
+  --destructive: #ff7a7a;
+  --border: rgb(255 255 255 / 0.09);
+  --input: rgb(255 255 255 / 0.16);
+  --ring: rgb(92 255 199 / 0.55);
+  --radius: 0.5rem;
 
-  --night: oklch(0.09 0.03 280);
-  --mist: oklch(0.92 0.03 290 / 0.92);
-  --mist-foreground: oklch(0.2 0.05 285);
-  --amber-hot: oklch(0.89 0.09 75);
-  --amber-glow: oklch(0.78 0.15 60 / 0.35);
-  --ok: oklch(0.86 0.1 155);
+  --subtle: #bababa;
+  --mint-deep: #18ac9b;
+  --glow: #2a2c4a;
+  --mint-glow: rgb(92 255 199 / 0.35);
+  --grid-dot: rgb(150 156 255 / 0.13);
 }
 
 @layer base {
   * { @apply border-border outline-ring/50; }
   html, body, #root { @apply h-full; }
-  body {
-    @apply bg-night font-sans text-foreground antialiased overflow-hidden;
-  }
+  body { @apply bg-background font-sans text-foreground antialiased overflow-hidden; }
 }
 
-/* ---------- atmosphere: the halo is her ---------- */
-
 @layer components {
-  .sky {
+  /* The console panel: dot grid over black, framed on wide screens. */
+  .console {
+    background-color: var(--background);
+    background-image: radial-gradient(circle, var(--grid-dot) 1px, transparent 1.4px);
+    background-size: 12px 12px;
+    background-position: 6px 6px;
+  }
+  /* Indigo light from the top of the panel; brightens and gains a mint core while she speaks. */
+  .glow {
     background:
-      radial-gradient(120% 70% at 50% 0%, oklch(0.26 0.1 280) 0%, transparent 60%),
-      linear-gradient(180deg, oklch(0.17 0.07 280) 0%, var(--night) 70%);
+      radial-gradient(40% 30% at 50% 0%, rgb(92 255 199 / calc(var(--voice) * 0.14)), transparent 70%),
+      radial-gradient(80% 60% at 50% 0%, rgb(58 62 120 / calc(0.75 + var(--voice) * 0.25)), transparent 72%),
+      linear-gradient(180deg, rgb(42 44 74 / 0.55), transparent 45%);
   }
-  .halo {
-    scale: calc(0.85 + var(--voice) * 0.35);
-    background: radial-gradient(circle,
-      oklch(0.78 0.15 60 / calc(0.1 + var(--voice) * 0.35)) 0%,
-      oklch(0.55 0.15 300 / 0.1) 38%,
-      transparent 66%);
-    will-change: scale;
+
+  /* Dot-matrix wordmark. Doto covers Latin; CJK names fall back to a dot mask below. */
+  .dot-name {
+    font-family: var(--font-dot);
+    font-variation-settings: 'ROND' 100;
+    font-weight: 800;
+    letter-spacing: 0.06em;
+    text-shadow: 0 0 14px rgb(255 255 255 / 0.22);
   }
-  .grain {
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 0.5 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  .dot-mask {
+    font-family: 'PingFang SC', 'Noto Sans SC', sans-serif;
+    font-weight: 900;
+    letter-spacing: 0.08em;
+    background-image: radial-gradient(circle, currentColor 0 40%, transparent 46%);
+    background-size: 4px 4px;
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    filter: drop-shadow(0 0 7px rgb(255 255 255 / 0.18));
   }
-  .orb {
-    background: radial-gradient(circle at 35% 35%, var(--amber-hot), var(--primary) 45%, oklch(0.68 0.16 50));
-    box-shadow: 0 0 calc(10px + var(--voice) * 40px) calc(2px + var(--voice) * 10px) var(--amber-glow);
-    scale: calc(1 + var(--voice) * 0.5);
+
+  /* Small-caps console labels: QUEUE, LIVE, CONNECTED… */
+  .label-mono {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
   }
-  .voice-glow { box-shadow: 0 0 calc(18px + var(--voice) * 40px) 0 var(--amber-glow); }
+
+  .voice-ring { box-shadow: 0 0 0 2px var(--primary), 0 0 calc(8px + var(--voice) * 28px) calc(var(--voice) * 6px) var(--mint-glow); }
+  .voice-glow { box-shadow: 0 0 calc(14px + var(--voice) * 34px) 0 var(--mint-glow); }
   /* While she speaks, bars ride her live level, each slightly out of phase. */
   .voice-bar-live { scale: 1 calc(0.55 + var(--voice) * 0.9 * (0.6 + 0.4 * sin(var(--i) * 1.7))); }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .halo, .orb, .voice-bar-live { scale: 1 !important; }
+  .voice-bar-live { scale: 1 !important; }
 }

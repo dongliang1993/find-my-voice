@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
-import { Play, Square } from 'lucide-react';
+import { Captions, Play, Square } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
 import type { ChatMessage } from '@shared/protocol';
 import { audio } from '@/audio';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { usePlaying } from '@/useVoice';
 import { cn } from '@/lib/utils';
 
@@ -27,6 +28,8 @@ const formatDuration = (seconds: number | null) => {
 };
 
 type State = 'idle' | 'pending' | 'playing' | 'failed';
+
+const clock = (iso: string) => new Date(iso).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false });
 
 export function VoiceBubble({ message }: { message: ChatMessage }) {
   const info = message.audio!;
@@ -63,46 +66,54 @@ export function VoiceBubble({ message }: { message: ChatMessage }) {
   const label = state === 'failed' ? '语音没发出来' : stopped ? '已停下' : state === 'pending' ? '正在开口…' : formatDuration(info.durationSeconds);
 
   return (
-    <div className="grid max-w-[min(86%,420px)] grid-cols-[auto_auto_1fr] items-center gap-x-2.5 gap-y-1.5">
+    <div className="flex max-w-full flex-col items-start gap-2">
       <motion.button type="button" onClick={toggle} disabled={state === 'pending' || state === 'failed' || stopped}
-        aria-label={active ? '停止播放' : '播放语音'} whileTap={state === 'idle' || state === 'playing' ? { scale: 0.97 } : undefined}
-        style={{ width: `calc(220px + ${len} * 180px)` }}
+        aria-label={active ? '停止播放' : '播放语音'} whileTap={state === 'idle' || state === 'playing' ? { scale: 0.98 } : undefined}
+        style={{ width: `calc(230px + ${len} * 170px)` }}
         className={cn(
-          'col-span-full flex max-w-full items-center gap-3 rounded-[20px] rounded-bl-md border py-2.5 pr-4 pl-3 text-amber-hot transition-[border-color,box-shadow] duration-300',
-          'border-primary/35 bg-linear-to-br from-primary/20 to-primary/5 shadow-[inset_0_1px_0_oklch(0.95_0.05_75/0.12)] enabled:hover:border-primary/60',
-          state === 'playing' && 'voice-glow border-primary',
-          state === 'failed' && 'border-destructive/40 from-destructive/10 to-transparent text-destructive',
-          stopped && 'opacity-60',
+          'flex max-w-full items-center gap-3 rounded-md border bg-black py-2.5 pr-4 pl-2.5 text-primary transition-[border-color,box-shadow] duration-300',
+          'border-primary/25 enabled:hover:border-primary/50',
+          state === 'playing' && 'voice-glow border-primary/70',
+          state === 'failed' && 'border-destructive/40 text-destructive',
+          stopped && 'border-white/10 text-muted-foreground',
         )}>
-        <span className={cn('grid size-7.5 flex-none place-items-center rounded-full bg-primary text-primary-foreground', state === 'failed' && 'bg-destructive')}>
+        <span className={cn('grid size-8 flex-none place-items-center rounded-full bg-primary text-primary-foreground',
+          state === 'failed' && 'bg-destructive', stopped && 'bg-muted-foreground')}>
           {active ? <Square className="size-3 fill-current" /> : <Play className="ml-0.5 size-3.5 fill-current" />}
         </span>
-        <span className="flex h-6.5 flex-1 items-center justify-between gap-0.5" aria-hidden="true">
+        <span className="flex h-7 flex-1 items-center justify-between gap-0.5" aria-hidden="true">
           {bars.map((height, i) => (
             <i key={i} style={{ height: `${height * 100}%`, '--i': i, animationDelay: `${i * 45}ms` } as React.CSSProperties}
               className={cn(
-                'w-[3px] flex-none rounded-full bg-current transition-opacity duration-150',
-                progress !== null && i / bars.length > progress ? 'opacity-35' : 'opacity-85',
+                'w-[3px] flex-none rounded-[1px] bg-current transition-opacity duration-150',
+                progress !== null && i / bars.length > progress ? 'opacity-25' : 'opacity-90',
                 state === 'playing' && 'voice-bar-live',
-                state === 'pending' && 'animate-pulse opacity-45',
+                state === 'pending' && 'animate-pulse opacity-40',
               )} />
           ))}
         </span>
-        <span className={cn('min-w-[3.2em] flex-none text-right font-heading text-sm font-medium tabular-nums', state === 'failed' && 'min-w-0 font-sans text-[13px]')}>
+        <span className={cn('min-w-[3.2em] flex-none text-right font-mono text-sm tabular-nums', (state === 'failed' || stopped || state === 'pending') && 'min-w-0 font-sans text-[13px]')}>
           {label}
         </span>
       </motion.button>
 
-      {message.emotion && <Badge variant="outline" className="h-5 rounded-full border-border px-2 text-xs font-normal text-muted-foreground">{message.emotion}</Badge>}
-      <button type="button" onClick={() => setShowText(v => !v)} aria-expanded={showText}
-        className="justify-self-start px-1 text-xs text-muted-foreground/70 transition-colors hover:text-muted-foreground">
-        {showText ? '收起' : '转文字'}
-      </button>
+      <div className="flex items-center gap-2">
+        <span className="label-mono text-[10px] text-muted-foreground/60">{clock(message.createdAt)}</span>
+        {message.emotion && (
+          <Badge variant="outline" className="label-mono h-6 rounded-full border-primary/30 px-2.5 text-[10px] text-primary/90">{message.emotion}</Badge>
+        )}
+        <Button type="button" variant="outline" size="xs" onClick={() => setShowText(v => !v)} aria-expanded={showText}
+          className="label-mono h-6 rounded-full border-white/12 bg-transparent px-2.5 text-[10px] text-subtle hover:bg-white/5 dark:bg-transparent">
+          <Captions className="size-3" />
+          {showText ? 'Hide' : 'Transcript'}
+        </Button>
+      </div>
+
       <AnimatePresence initial={false}>
         {(showText || state === 'failed' || stopped) && (
           <motion.p initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }}
             transition={{ duration: 0.24, ease: [0.22, 1, 0.36, 1] }}
-            className="col-span-full mb-1.5 overflow-hidden px-1 text-[15px] text-muted-foreground">
+            className="max-w-[460px] overflow-hidden border-l-2 border-primary/30 pl-3 text-[15px] leading-relaxed text-subtle">
             {message.text}
           </motion.p>
         )}

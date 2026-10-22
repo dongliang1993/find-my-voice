@@ -5,6 +5,7 @@ import { toast } from 'sonner';
 import { api, type AppStatus } from '@/api';
 import { audio } from '@/audio';
 import { Composer } from '@/components/Composer';
+import { Avatar, DotName } from '@/components/Identity';
 import { MessageList } from '@/components/MessageList';
 import { SettingsPanel } from '@/components/SettingsPanel';
 import { Button } from '@/components/ui/button';
@@ -36,51 +37,60 @@ export function App() {
     for (const notice of chat.notices) { toast.error(notice.message, { id: notice.id }); chat.dismiss(notice.id); }
   }, [chat.notices, chat.dismiss]);
 
+  const online = chat.connection === 'open';
   const thinking = chat.status === 'thinking';
-  const name = status?.companionName ?? '…';
-  const mood = playing ? '正在对你说' : thinking ? '在想怎么回你' : chat.connection === 'open' ? '在' : '连接中…';
+  const name = status?.companionName ?? '';
   const needsSetup = status !== null && (!status.brain.ready || !status.voice.ready);
+  const onAir = playing ? 'SPEAKING' : thinking ? 'THINKING' : online ? 'ONLINE' : 'CONNECTING';
 
   return (
-    <div className="relative isolate grid h-dvh grid-rows-[auto_1fr_auto]">
-      <div className="sky fixed inset-0 -z-10 overflow-hidden" aria-hidden="true">
-        <motion.div className="halo absolute top-[-30vmax] left-1/2 size-[90vmax] -translate-x-1/2 rounded-full blur-[20px]"
-          animate={thinking && !playing ? { opacity: [1, 0.6, 1] } : { opacity: 1 }}
-          transition={thinking && !playing ? { duration: 3.2, repeat: Infinity, ease: 'easeInOut' } : { duration: 0.6 }} />
-        <div className="grain pointer-events-none absolute -inset-1/2 opacity-[0.07] mix-blend-overlay" />
+    <div className="h-dvh sm:p-6">
+      <div className="console relative isolate mx-auto grid h-full max-w-[720px] grid-rows-[auto_1fr_auto_auto] overflow-hidden sm:rounded-2xl sm:border sm:border-white/8 sm:shadow-[0_0_90px_-10px_rgb(70_70_160/0.35)]">
+        <div className="glow pointer-events-none absolute inset-x-0 top-0 -z-10 h-[60%]" aria-hidden="true" />
+
+        <header className="flex items-center gap-3.5 border-b border-border px-5 pt-[calc(1rem+env(safe-area-inset-top))] pb-4">
+          <Avatar name={name || '·'} speaking={Boolean(playing)} className="size-12 text-xl" />
+          <div className="min-w-0 flex-1">
+            <h1 className="truncate text-[44px] leading-[0.9] text-foreground sm:text-[52px]">{name ? <DotName name={name} /> : ' '}</h1>
+            <p className="label-mono mt-2 flex items-center gap-2 text-muted-foreground">
+              <motion.span className={cn('size-1.5 rounded-full', online ? 'bg-primary' : 'bg-muted-foreground')}
+                animate={thinking ? { opacity: [1, 0.25, 1] } : { opacity: 1 }}
+                transition={thinking ? { duration: 1.1, repeat: Infinity } : { duration: 0.2 }} />
+              <AnimatePresence mode="wait" initial={false}>
+                <motion.span key={onAir} initial={{ opacity: 0, y: 3 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -3 }} transition={{ duration: 0.18 }}
+                  className={cn(playing && 'text-primary')}>
+                  {onAir}
+                </motion.span>
+              </AnimatePresence>
+            </p>
+          </div>
+          <Button variant="outline" onClick={() => setSettingsOpen(true)} aria-label="设置"
+            className="label-mono relative h-9 rounded-full border-white/15 bg-transparent px-3.5 text-subtle hover:bg-white/5 dark:bg-transparent">
+            <Settings className="size-3.5" />
+            <span className="hidden sm:inline">Settings</span>
+            {needsSetup && <span className="absolute -top-0.5 -right-0.5 size-2 rounded-full bg-destructive" />}
+          </Button>
+        </header>
+
+        <MessageList messages={chat.messages} status={chat.status} name={name} />
+
+        <Composer status={chat.status} disabled={!online || !status?.brain.ready}
+          onSend={chat.send} onInterrupt={chat.interrupt} />
+
+        <footer className="label-mono flex items-center justify-between border-t border-border px-5 pt-2.5 pb-[calc(0.625rem+env(safe-area-inset-bottom))] text-[10px] text-muted-foreground/70">
+          <span>Find my voice</span>
+          <span className="flex items-center gap-1.5">
+            <span className={cn('size-1 rounded-full', online ? 'bg-primary' : 'bg-destructive')} />
+            {online ? 'Connected' : 'Reconnecting…'}
+          </span>
+        </footer>
+
+        {status && (
+          <SettingsPanel open={settingsOpen} status={status} onOpenChange={setSettingsOpen}
+            onSaved={() => { void refresh(); setSettingsOpen(false); }} />
+        )}
+        <Toaster position="top-center" />
       </div>
-
-      <header className="mx-auto grid w-full max-w-[680px] grid-cols-[auto_1fr_auto] items-center gap-3.5 px-4 pt-[calc(0.875rem+env(safe-area-inset-top))] pb-2.5">
-        <div className="grid size-11 place-items-center" aria-hidden="true">
-          <motion.span className="orb size-5.5 rounded-full"
-            animate={thinking && !playing ? { scale: [1, 0.82, 1], opacity: [1, 0.7, 1] } : {}}
-            transition={{ duration: 1.4, repeat: Infinity, ease: 'easeInOut' }} />
-        </div>
-        <div>
-          <h1 className="font-heading text-[26px] leading-tight font-medium tracking-wide text-mist [font-variation-settings:'opsz'_72,'SOFT'_100]">{name}</h1>
-          <AnimatePresence mode="wait" initial={false}>
-            <motion.p key={mood} initial={{ opacity: 0, y: 3 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -3 }} transition={{ duration: 0.2 }}
-              className={cn('mt-0.5 min-h-[1.6em] text-[13px]', playing ? 'text-primary' : 'text-muted-foreground/70')}>
-              {mood}
-            </motion.p>
-          </AnimatePresence>
-        </div>
-        <Button variant="ghost" size="icon-lg" className="relative rounded-full text-muted-foreground" onClick={() => setSettingsOpen(true)} aria-label="设置">
-          <Settings className="size-4.5" />
-          {needsSetup && <span className="absolute top-1.5 right-1.5 size-1.75 rounded-full bg-destructive" />}
-        </Button>
-      </header>
-
-      <MessageList messages={chat.messages} status={chat.status} name={name} />
-
-      <Composer status={chat.status} disabled={chat.connection !== 'open' || !status?.brain.ready}
-        onSend={chat.send} onInterrupt={chat.interrupt} />
-
-      {status && (
-        <SettingsPanel open={settingsOpen} status={status} onOpenChange={setSettingsOpen}
-          onSaved={() => { void refresh(); setSettingsOpen(false); }} />
-      )}
-      <Toaster position="top-center" />
     </div>
   );
 }

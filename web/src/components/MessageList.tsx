@@ -1,16 +1,18 @@
 import { useEffect, useLayoutEffect, useRef } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import type { ChatMessage, CompanionStatus } from '@shared/protocol';
+import { Avatar } from '@/components/Identity';
 import { VoiceBubble } from '@/components/VoiceBubble';
 import { cn } from '@/lib/utils';
 
 const GAP_MS = 10 * 60 * 1000;
 const EASE_OUT = [0.22, 1, 0.36, 1] as const;
 
-const timeLabel = (iso: string) => {
+const clock = (iso: string) => new Date(iso).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false });
+const dayLabel = (iso: string) => {
   const date = new Date(iso);
-  const today = new Date().toDateString() === date.toDateString();
-  return date.toLocaleString('zh-CN', today ? { hour: '2-digit', minute: '2-digit' } : { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+  if (new Date().toDateString() === date.toDateString()) return clock(iso);
+  return date.toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false });
 };
 
 type Props = { messages: ChatMessage[]; status: CompanionStatus; name: string };
@@ -38,39 +40,52 @@ export function MessageList({ messages, status, name }: Props) {
   return (
     <div ref={scroller} role="log" aria-live="polite" aria-label={`和${name}的对话`}
       className="overflow-y-auto overscroll-contain [scrollbar-color:var(--border)_transparent] [scrollbar-width:thin]">
-      <div className="mx-auto flex min-h-full w-full max-w-[680px] flex-col justify-end px-4 pt-3 pb-6">
+      <div className="flex min-h-full flex-col justify-end px-5 pt-4 pb-6">
         {!messages.length && (
           <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, ease: EASE_OUT }}
-            className="my-auto px-2 pb-[18vh] text-center">
-            <p className="font-heading text-3xl italic text-mist">今晚想聊点什么？</p>
-            <p className="mt-2.5 text-muted-foreground">打字给{name}，她会回你。想听她的声音，就直接说。</p>
+            className="my-auto pb-[14vh] text-center">
+            <p className="label-mono text-muted-foreground/70">— Channel open —</p>
+            <p className="mt-4 text-2xl font-medium text-foreground">今晚想聊点什么？</p>
+            <p className="mt-2 text-sm text-muted-foreground">打字给{name || '她'}，她会回你。想听她的声音，就直接说。</p>
           </motion.div>
         )}
 
         {messages.map((message, i) => {
           const prev = messages[i - 1];
-          const showTime = !prev || Date.parse(message.createdAt) - Date.parse(prev.createdAt) > GAP_MS;
-          const grouped = prev?.role === message.role && !showTime;
+          const newBlock = !prev || Date.parse(message.createdAt) - Date.parse(prev.createdAt) > GAP_MS;
+          const grouped = prev?.role === message.role && !newBlock;
           const user = message.role === 'user';
+          const next = messages[i + 1];
+          // One timestamp per turn: under her last bubble before the reply changes hands.
+          const endsTurn = !user && message.kind === 'text' && Boolean(message.text) && next?.role !== 'assistant';
           return (
             <div key={message.id}>
-              {showTime && (
-                <time dateTime={message.createdAt} className="mt-5.5 mb-2.5 block text-center text-xs tracking-widest text-muted-foreground/70">
-                  {timeLabel(message.createdAt)}
-                </time>
+              {newBlock && (
+                <p className="label-mono my-5 text-center text-muted-foreground/60">
+                  <time dateTime={message.createdAt}>{dayLabel(message.createdAt)}</time>
+                </p>
               )}
               <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.32, ease: EASE_OUT }}
-                className={cn('flex', grouped ? 'mt-1' : 'mt-3.5', user && 'justify-end')}>
-                {message.kind === 'voice' ? <VoiceBubble message={message} /> : (
-                  <p className={cn(
-                    'max-w-[min(78%,520px)] rounded-[20px] px-3.75 py-2.5 wrap-anywhere whitespace-pre-wrap',
-                    user
-                      ? cn('rounded-br-md bg-mist text-mist-foreground', grouped && 'rounded-tr-md')
-                      : cn('rounded-bl-md bg-card shadow-[inset_0_1px_0_oklch(0.95_0.03_290/0.06)]', grouped && 'rounded-tl-md'),
-                  )}>
-                    {message.text || ' '}
-                  </p>
-                )}
+                className={cn('flex gap-3', grouped ? 'mt-1.5' : 'mt-5', user && 'flex-row-reverse')}>
+                {!user && (grouped ? <span className="w-9 flex-none" /> : <Avatar name={name || '·'} className="mt-6 size-9 text-[20px]" />)}
+                <div className={cn('flex min-w-0 max-w-[min(82%,540px)] flex-col', user && 'items-end')}>
+                  {!grouped && (
+                    <p className="label-mono mb-2 text-muted-foreground">{user ? 'You' : name}</p>
+                  )}
+                  {message.kind === 'voice' ? <VoiceBubble message={message} /> : (
+                    <p className={cn(
+                      'rounded-md px-4 py-3 text-[15px] leading-relaxed wrap-anywhere whitespace-pre-wrap',
+                      user
+                        ? 'border border-white/12 bg-secondary/70 text-foreground'
+                        : 'border border-white/8 bg-black text-foreground shadow-[0_1px_0_rgb(255_255_255/0.04)_inset]',
+                    )}>
+                      {message.text || ' '}
+                    </p>
+                  )}
+                  {endsTurn && (
+                    <p className="label-mono mt-2 text-[10px] text-muted-foreground/60">{clock(message.createdAt)}</p>
+                  )}
+                </div>
               </motion.div>
             </div>
           );
@@ -79,12 +94,13 @@ export function MessageList({ messages, status, name }: Props) {
         <AnimatePresence>
           {showTyping && (
             <motion.div key="typing" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, transition: { duration: 0.15 } }}
-              className="mt-3.5 flex">
-              <p className="inline-flex gap-1.5 rounded-[20px] rounded-bl-md bg-card px-4 py-4" aria-label={`${name}正在输入`}>
+              className="mt-5 flex gap-3">
+              <Avatar name={name || '·'} className="size-9 text-[20px]" />
+              <p className="inline-flex items-center gap-1.5 rounded-md border border-white/8 bg-black px-4 py-3.5" aria-label={`${name}正在输入`}>
                 {[0, 1, 2].map(i => (
-                  <motion.i key={i} className="size-1.5 rounded-full bg-muted-foreground"
-                    animate={{ y: [0, -4, 0], opacity: [0.4, 1, 0.4] }}
-                    transition={{ duration: 1.2, repeat: Infinity, delay: i * 0.15, ease: 'easeInOut' }} />
+                  <motion.i key={i} className="size-1.5 rounded-full bg-primary"
+                    animate={{ opacity: [0.2, 1, 0.2] }}
+                    transition={{ duration: 1.1, repeat: Infinity, delay: i * 0.18, ease: 'easeInOut' }} />
                 ))}
               </p>
             </motion.div>

@@ -10,6 +10,7 @@ import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Field } from '@/components/settings/Field';
 import { draftFrom, patchFrom, VoiceSettings, type VoiceDraft } from '@/components/settings/VoiceSettings';
+import { initiativeDraftFrom, initiativePatch, InitiativeSettingsSection, type InitiativeDraft } from '@/components/settings/InitiativeSettings';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { cn } from '@/lib/utils';
 
@@ -73,11 +74,12 @@ function SettingsForm({ status, onSaved, pane }: { status: AppStatus; onSaved: (
   const [settings, setSettings] = useState<PublicSettings | null>(null);
   const [voice, setVoice] = useState<VoiceDraft>(() => draftFrom(null));
   const [name, setName] = useState(status.companionName);
+  const [initiative, setInitiative] = useState<InitiativeDraft>(() => initiativeDraftFrom(undefined));
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     api.settings()
-      .then(s => { setSettings(s); setVoice(draftFrom(s)); })
+      .then(s => { setSettings(s); setVoice(draftFrom(s)); setInitiative(initiativeDraftFrom(s.initiative)); })
       .catch(() => toast.error('读取设置失败'));
   }, []);
 
@@ -92,7 +94,7 @@ function SettingsForm({ status, onSaved, pane }: { status: AppStatus; onSaved: (
     try {
       const next = tab === 'brain' ? await api.saveSettings({ brain })
         : tab === 'voice' ? await api.saveSettings({ voice: patchFrom(voice) })
-        : await api.saveSettings({ companion: { name } });
+        : await api.saveSettings({ companion: { name }, initiative: initiativePatch(initiative) });
       // Keep the panel truthful even if it stays open: saved keys become "saved", typed secrets clear.
       setSettings(next);
       setVoice(draftFrom(next));
@@ -162,6 +164,7 @@ function SettingsForm({ status, onSaved, pane }: { status: AppStatus; onSaved: (
           <Field id="her-name" label="Ta 的名字">
             <Input id="her-name" value={name} onChange={e => setName(e.target.value)} maxLength={40} required />
           </Field>
+          <InitiativeSettingsSection draft={initiative} name={name} onChange={setInitiative} />
         </TabsContent>
       </form>
 

@@ -54,6 +54,7 @@ export function createHttp(app: App, webRoot: string) {
     const origin = c.req.header('origin');
     const host = c.req.header('host');
     let unsubscribe = () => {};
+    const viewer = Symbol('viewer');
     return {
       onOpen(_event, ws) {
         if (origin && host && new URL(origin).host !== host) { ws.close(1008, 'Forbidden origin'); return; }
@@ -71,9 +72,10 @@ export function createHttp(app: App, webRoot: string) {
         }
         const message = parsed.data;
         if (message.type === 'send') void app.chat.send(message.clientId, message.text);
+        else if (message.type === 'presence') app.presence.set(viewer, message.visible);
         else void app.chat.interrupt();
       },
-      onClose() { unsubscribe(); },
+      onClose() { unsubscribe(); app.presence.delete(viewer); },
     };
   }));
 

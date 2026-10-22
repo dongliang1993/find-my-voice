@@ -189,3 +189,105 @@ test('snapshot lists history and current status', async () => {
   assert.equal(hello.messages.length, 2);
   assert.equal(hello.status, 'idle');
 });
+
+// ---- speaking first ----
+
+const candidate = { kind: 'followup' as const, reason: '你之前记下要关心对方的事到时间了：「面试」。', followupId: 'f1' };
+
+test('speaking first stores her message tagged as an initiative, and the nudge never shows', async () => {
+  const brain = new ScriptedBrain([{ type: 'text_delta', text: '面试' }, { type: 'text_delta', text: '怎么样啦？' }]);
+  const { store, events, service } = setup(brain);
+  const { outcome } = await service.speakUp(candidate);
+  assert.equal(outcome, 'spoke');
+  const [msg] = store.recent();
+  assert.equal(store.recent().length, 1, 'no user message for the nudge');
+  assert.equal(msg?.text, '面试怎么样啦？');
+  assert.equal(msg?.initiative, 'followup');
+  assert.match(brain.received[0]!, /面试/);
+  assert.match(brain.received[0]!, /PASS/);
+  assert.ok(events.some(e => e.type === 'initiative' && e.messageIds.includes(msg!.id)));
+});
+
+test('she can choose silence: PASS stores and shows nothing', async () => {
+  const { store, events, service } = setup(new ScriptedBrain([{ type: 'text_delta', text: 'PA' }, { type: 'text_delta', text: 'SS' }]));
+  assert.equal((await service.speakUp(candidate)).outcome, 'passed');
+  assert.equal(store.recent().length, 0);
+  assert.equal(events.some(e => e.type === 'message' || e.type === 'text_delta' || e.type === 'initiative'), false);
+});
+
+test('a voice she sends unprompted is tagged too', async () => {
+  const { store, service } = setup(new ScriptedBrain([{ type: 'voice', text: '早安呀', emotion: '温柔' }]));
+  await service.speakUp({ kind: 'morning', reason: '早上' });
+  await settle();
+  const [voice] = store.recent();
+  assert.equal(voice?.kind, 'voice');
+  assert.equal(voice?.initiative, 'morning');
+});
+
+test('never speaks up while a reply is in progress', async () => {
+  let release!: () => void;
+  const { service } = setup(new ScriptedBrain(() => new Promise<void>(r => { release = r; })));
+  const replying = service.send(randomUUID(), 'hi');
+  await settle();
+  assert.equal(service.busy, true);
+  assert.equal((await service.speakUp(candidate)).outcome, 'busy');
+  release();
+  await replying;
+  assert.equal(service.busy, false);
+});
+
+test('a user message arriving while she speaks up is answered right after', async () => {
+  let release!: () => void;
+  let turn = 0;
+  const brain = new ScriptedBrain(async sink => {
+    turn++;
+    if (turn === 1) { await new Promise<void>(r => { release = r; }); sink({ type: 'text_delta', text: '在忙吗' }); }
+    else sink({ type: 'text_delta', text: '收到' });
+  });
+  const { store, service } = setup(brain);
+  const speaking = service.speakUp(candidate);
+  await settle();
+  void service.send(randomUUID(), '我来了');
+  release();
+  await speaking;
+  await settle(); await settle();
+  assert.deepEqual(store.recent().map(m => [m.role, m.text]), [['user', '我来了'], ['assistant', '在忙吗'], ['assistant', '收到']]);
+});
+
+test('a stale persona rebuilds the brain before the next turn', async () => {
+  let built = 0;
+  let version = 'v1';
+  const store = new ChatStore(mkdtempSync(join(tmpdir(), 'fmv-chat-')));
+  const service = new ChatService({ store, voice: { speak: okVoice }, promptVersion: () => version,
+    createBrain: () => { built++; return new ScriptedBrain([{ type: 'text_delta', text: 'ok' }]); } });
+  await service.send(randomUUID(), 'a');
+  await service.send(randomUUID(), 'b');
+  assert.equal(built, 1, 'same persona: reuse');
+  version = 'v2';
+  await service.send(randomUUID(), 'c');
+  assert.equal(built, 2, 'persona changed: rebuild');
+});
+
+test('stopping her while she is speaking up drops what she had buffered', async () => {
+  let release!: () => void;
+  const { store, service } = setup(new ScriptedBrain(async sink => {
+    sink({ type: 'text_delta', text: '在吗' });
+    await new Promise<void>(r => { release = r; });
+  }));
+  const speaking = service.speakUp(candidate);
+  await settle();
+  await service.interrupt();
+  release();
+  assert.equal((await speaking).outcome, 'stopped');
+  assert.equal(store.recent().length, 0);
+});
+
+test('speakUp reports the ids of what she said', async () => {
+  const { service } = setup(new ScriptedBrain([{ type: 'text_delta', text: '嗨' }]));
+  const ids: string[][] = [];
+  service.subscribe(e => { if (e.type === 'initiative') ids.push(e.messageIds); });
+  const result = await service.speakUp(candidate);
+  assert.equal(result.outcome, 'spoke');
+  assert.equal(ids[0]?.length, 1);
+  assert.equal(result.messages[0]?.text, '嗨');
+});

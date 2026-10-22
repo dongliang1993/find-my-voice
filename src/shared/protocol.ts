@@ -4,6 +4,9 @@
 export type AudioState = 'streaming' | 'ready' | 'stopped' | 'failed';
 export type AudioInfo = { id: string; state: AudioState; durationSeconds: number | null; error: string | null };
 
+/** Why she started talking unprompted; null for ordinary replies. */
+export type InitiativeKind = 'followup' | 'morning' | 'miss_you';
+
 export type ChatMessage = {
   id: string;
   role: 'user' | 'assistant';
@@ -13,13 +16,16 @@ export type ChatMessage = {
   emotion: string | null;
   audio: AudioInfo | null;
   createdAt: string;
+  initiative: InitiativeKind | null;
 };
 
 export type CompanionStatus = 'idle' | 'thinking';
 
 export type ClientEvent =
   | { type: 'send'; clientId: string; text: string }
-  | { type: 'interrupt' };
+  | { type: 'interrupt' }
+  /** The page reports whether it is on screen, so she only rings the OS when nobody is looking. */
+  | { type: 'presence'; visible: boolean };
 
 export type ServerEvent =
   | { type: 'hello'; messages: ChatMessage[]; status: CompanionStatus }
@@ -29,6 +35,8 @@ export type ServerEvent =
   /** Base64 PCM, signed 16-bit little-endian, mono. */
   | { type: 'audio_chunk'; audioId: string; data: string }
   | { type: 'status'; status: CompanionStatus }
+  /** She started talking on her own; the browser may notify if it is in the background. */
+  | { type: 'initiative'; kind: InitiativeKind; messageIds: string[] }
   | { type: 'error'; code: string; message: string };
 
 export const PCM_SAMPLE_RATE = 24000;
@@ -50,9 +58,15 @@ export type AppStatus = {
   voice: { provider: VoiceProviderId; ready: boolean };
 };
 
+export type InitiativeSettings = {
+  enabled: boolean; notify: boolean; quietStart: number; quietEnd: number; dailyLimit: number;
+  cooldownMinutes: number; missYouHours: number; morningStart: number; morningEnd: number;
+};
+
 /** Settings as the browser sees them: secrets reduced to presence flags. */
 export type PublicSettings = {
   companion: { name: string };
+  initiative: InitiativeSettings;
   brain: { baseUrl: string; model: string; hasApiKey: boolean };
   voice: {
     provider: VoiceProviderId; speechRate: number; timeoutMs: number;
@@ -67,6 +81,7 @@ export type PublicSettings = {
 
 export type SettingsUpdate = {
   companion?: { name?: string };
+  initiative?: Partial<Pick<InitiativeSettings, 'enabled' | 'notify' | 'quietStart' | 'quietEnd' | 'dailyLimit'>>;
   brain?: { baseUrl?: string; apiKey?: string; model?: string };
   voice?: {
     provider?: VoiceProviderId; speechRate?: number;

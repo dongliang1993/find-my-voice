@@ -59,3 +59,59 @@ test('remembers the brain session id', () => {
 test('update of an unknown id throws', () => {
   assert.throws(() => store().update('nope', { text: 'x' }), /not found/i);
 });
+
+test('reports when each side last spoke', () => {
+  const s = store();
+  assert.deepEqual(s.lastSpoke(), { user: null, assistant: null });
+  const u = s.append({ role: 'user', kind: 'text', text: 'hi' });
+  const a = s.append({ role: 'assistant', kind: 'voice', text: 'yo' });
+  const last = s.lastSpoke();
+  assert.equal(last.user?.toISOString(), u.createdAt);
+  assert.equal(last.assistant?.toISOString(), a.createdAt);
+});
+
+test('initiative messages are marked and counted per day', () => {
+  const s = store();
+  s.append({ role: 'assistant', kind: 'text', text: '早', initiative: 'morning' });
+  s.append({ role: 'assistant', kind: 'text', text: '普通回复' });
+  assert.equal(s.recent().find(m => m.text === '早')?.initiative, 'morning');
+  assert.equal(s.recent().find(m => m.text === '普通回复')?.initiative, null);
+  assert.equal(s.initiativesSince(new Date(Date.now() - 60_000)), 1);
+  assert.equal(s.initiativesSince(new Date(Date.now() + 60_000)), 0);
+  assert.ok(s.lastInitiativeAt());
+});
+
+test('follow-ups: due ones come back oldest first, and are not repeated once done', () => {
+  const s = store();
+  const now = new Date('2026-10-22T12:00:00Z');
+  s.addFollowup({ topic: '面试', note: '有点紧张', dueAt: new Date('2026-10-22T10:00:00Z') });
+  s.addFollowup({ topic: '体检结果', note: '', dueAt: new Date('2026-10-22T09:00:00Z') });
+  s.addFollowup({ topic: '下周的旅行', note: '', dueAt: new Date('2026-10-29T09:00:00Z') });
+  const due = s.dueFollowups(now);
+  assert.deepEqual(due.map(f => f.topic), ['体检结果', '面试']);
+  s.resolveFollowup(due[0]!.id);
+  assert.deepEqual(s.dueFollowups(now).map(f => f.topic), ['面试']);
+});
+
+test('follow-ups with the same topic and day are not stored twice', () => {
+  const s = store();
+  const dueAt = new Date('2026-10-22T10:00:00Z');
+  assert.equal(s.addFollowup({ topic: '面试', note: '', dueAt }), true);
+  assert.equal(s.addFollowup({ topic: '面试', note: '再说一次', dueAt }), false);
+  assert.equal(s.dueFollowups(new Date('2026-10-23T00:00:00Z')).length, 1);
+});
+
+test('messages after a point are listed for memory extraction', () => {
+  const s = store();
+  const a = s.append({ role: 'user', kind: 'text', text: 'a' });
+  s.append({ role: 'assistant', kind: 'text', text: 'b' });
+  s.append({ role: 'user', kind: 'text', text: 'c' });
+  assert.deepEqual(s.after(null).map(m => m.text), ['a', 'b', 'c']);
+  assert.deepEqual(s.after(a.id).map(m => m.text), ['b', 'c']);
+});
+
+test('a cursor pointing at a vanished message starts over instead of reading nothing forever', () => {
+  const s = store();
+  s.append({ role: 'user', kind: 'text', text: 'a' });
+  assert.deepEqual(s.after('gone-id').map(m => m.text), ['a']);
+});

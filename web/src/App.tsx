@@ -11,6 +11,7 @@ import { SettingsPanel } from '@/components/SettingsPanel';
 import { Button } from '@/components/ui/button';
 import { Toaster } from '@/components/ui/sonner';
 import { useChat } from '@/hooks/useChat';
+import { useReachOut } from '@/hooks/useReachOut';
 import { usePlaying, useVoiceGlow } from '@/hooks/useVoice';
 import { cn } from '@/lib/utils';
 
@@ -20,6 +21,8 @@ export function App() {
   const [status, setStatus] = useState<AppStatus | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   useVoiceGlow();
+
+  useReachOut(chat.reached, chat.messages, status?.companionName ?? '');
 
   const refresh = useCallback(() => api.status().then(setStatus).catch(() => setStatus(null)), []);
   useEffect(() => { void refresh(); }, [refresh]);

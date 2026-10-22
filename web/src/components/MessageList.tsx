@@ -1,12 +1,14 @@
 import { useEffect, useLayoutEffect, useRef } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import type { ChatMessage, CompanionStatus } from '@shared/protocol';
+import type { ChatMessage, CompanionStatus, InitiativeKind } from '@shared/protocol';
 import { Avatar } from '@/components/Identity';
 import { VoiceBubble } from '@/components/VoiceBubble';
 import { cn } from '@/lib/utils';
 
 const GAP_MS = 10 * 60 * 1000;
 const EASE_OUT = [0.22, 1, 0.36, 1] as const;
+/** Shown next to her name when she spoke first. */
+const INITIATIVE_LABEL: Record<InitiativeKind, string> = { followup: 'Remembered', morning: 'Morning', miss_you: 'Missed you' };
 
 const clock = (iso: string) => new Date(iso).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false });
 const dayLabel = (iso: string) => {
@@ -70,7 +72,14 @@ export function MessageList({ messages, status, name }: Props) {
                 {!user && (grouped ? <span className="w-9 flex-none" /> : <Avatar data-slot="头像" name={name || '·'} className="mt-1.5 size-9 text-[20px]" />)}
                 <div className={cn('flex min-w-0 max-w-[min(82%,540px)] flex-col', user && 'items-end')}>
                   {!grouped && (
-                    <p className="label-mono mb-2 text-muted-foreground">{user ? 'You' : name}</p>
+                    <p className="label-mono mb-2 flex items-center gap-2 text-muted-foreground">
+                      {user ? 'You' : name}
+                      {message.initiative && (
+                        <span className="flex items-center gap-1 text-[10px] text-primary/80">
+                          <span className="size-1 rounded-full bg-primary" />{INITIATIVE_LABEL[message.initiative]}
+                        </span>
+                      )}
+                    </p>
                   )}
                   {message.kind === 'voice' ? <VoiceBubble message={message} /> : (
                     <p className={cn(

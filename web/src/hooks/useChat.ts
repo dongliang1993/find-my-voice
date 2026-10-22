@@ -4,7 +4,9 @@ import { audio } from '@/lib/audio';
 
 export type Connection = 'connecting' | 'open' | 'closed';
 export type Notice = { id: number; message: string };
-type State = { messages: ChatMessage[]; status: CompanionStatus; connection: Connection; notices: Notice[] };
+/** Her latest unprompted message, for notifications. */
+export type Reached = { seq: number; messageIds: string[] };
+type State = { messages: ChatMessage[]; status: CompanionStatus; connection: Connection; notices: Notice[]; reached: Reached | null };
 
 type Action =
   | { type: 'event'; event: ServerEvent }
@@ -32,6 +34,7 @@ function reducer(state: State, action: Action): State {
     };
     case 'status': return { ...state, status: event.status };
     case 'error': return { ...state, notices: [...state.notices, { id: ++noticeSeq, message: event.message }].slice(-3) };
+    case 'initiative': return { ...state, reached: { seq: (state.reached?.seq ?? 0) + 1, messageIds: event.messageIds } };
     default: return state;
   }
 }
@@ -40,7 +43,7 @@ const RETRY_MS = [500, 1000, 2000, 4000, 8000];
 
 /** The live conversation over one auto-reconnecting WebSocket. */
 export function useChat() {
-  const [state, dispatch] = useReducer(reducer, { messages: [], status: 'idle', connection: 'connecting', notices: [] });
+  const [state, dispatch] = useReducer(reducer, { messages: [], status: 'idle', connection: 'connecting', notices: [], reached: null });
   const socket = useRef<WebSocket | null>(null);
   const pending = useRef<ClientEvent[]>([]);
 
@@ -56,6 +59,7 @@ export function useChat() {
       ws.onopen = () => {
         attempt = 0;
         dispatch({ type: 'connection', connection: 'open' });
+        ws.send(JSON.stringify({ type: 'presence', visible: document.visibilityState === 'visible' } satisfies ClientEvent));
         for (const event of pending.current.splice(0)) ws.send(JSON.stringify(event));
       };
       ws.onmessage = e => {
@@ -70,8 +74,19 @@ export function useChat() {
         timer = window.setTimeout(connect, RETRY_MS[Math.min(attempt++, RETRY_MS.length - 1)]);
       };
     };
+    // Lets the server skip the OS notification while the chat is on screen.
+    const onVisibility = () => {
+      const ws = socket.current;
+      if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'presence', visible: document.visibilityState === 'visible' } satisfies ClientEvent));
+    };
+    document.addEventListener('visibilitychange', onVisibility);
     connect();
-    return () => { disposed = true; window.clearTimeout(timer); socket.current?.close(); };
+    return () => {
+      disposed = true;
+      document.removeEventListener('visibilitychange', onVisibility);
+      window.clearTimeout(timer);
+      socket.current?.close();
+    };
   }, []);
 
   const emit = useCallback((event: ClientEvent) => {

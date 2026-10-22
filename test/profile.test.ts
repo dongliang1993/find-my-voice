@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, readdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { buildSystemPrompt, readProfileDocument, writeProfileDocument } from '../src/server/profile/profile.js';
+import { buildSystemPrompt, personaVersion, readProfileDocument, writeProfileDocument } from '../src/server/profile/profile.js';
 
 const dir = () => mkdtempSync(join(tmpdir(), 'fmv-profile-'));
 
@@ -49,4 +49,15 @@ test('system prompt carries identity, memory and the companion name', () => {
 test('system prompt asks to get to know the user when there is no memory yet', () => {
   const prompt = buildSystemPrompt(dir(), { companionName: 'Vivi', now: new Date() });
   assert.match(prompt, /还不了解/);
+});
+
+test('persona version changes with memory, name or day, but not within the same day', () => {
+  const d = dir();
+  const morning = new Date(2026, 9, 22, 9), evening = new Date(2026, 9, 22, 22), tomorrow = new Date(2026, 9, 23, 9);
+  const v1 = personaVersion(d, 'Vivi', morning);
+  assert.equal(personaVersion(d, 'Vivi', evening), v1);
+  assert.notEqual(personaVersion(d, 'Vivi', tomorrow), v1);
+  assert.notEqual(personaVersion(d, '阿月', morning), v1);
+  writeFileSync(join(d, 'MEMORY.md'), '- 叫阿亮');
+  assert.notEqual(personaVersion(d, 'Vivi', morning), v1);
 });

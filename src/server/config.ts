@@ -51,6 +51,19 @@ export const settingsSchema = z.object({
     apiKey: z.string().default(''),
     model: z.string().default(''),
   }).strict().prefault({}),
+  // When and how often she may speak first. Local hours; quiet hours may wrap midnight.
+  initiative: z.object({
+    enabled: z.boolean().default(true),
+    quietStart: z.number().int().min(0).max(23).default(23),
+    quietEnd: z.number().int().min(0).max(23).default(8),
+    dailyLimit: z.number().int().min(0).max(10).default(3),
+    cooldownMinutes: z.number().int().min(10).max(1440).default(90),
+    missYouHours: z.number().int().min(4).max(240).default(30),
+    morningStart: z.number().int().min(0).max(23).default(8),
+    morningEnd: z.number().int().min(0).max(23).default(11),
+    /** macOS notification when she speaks first. */
+    notify: z.boolean().default(true),
+  }).strict().prefault({}),
   voice: z.object({
     provider: z.enum(['volcengine', 'fish', 'elevenlabs', 'fixture']).default('volcengine'),
     speechRate: z.number().int().min(-50).max(100).default(0),
@@ -80,6 +93,11 @@ export type SettingsPatch = { [K in Exclude<Group, 'voice'>]?: Partial<Settings[
 export const settingsPatchSchema: z.ZodType<SettingsPatch> = z.object({
   companion: z.object({ name: z.string().trim().min(1).max(40) }).partial().strict().optional(),
   brain: z.object({ baseUrl: z.string(), apiKey: z.string(), model: z.string() }).partial().strict().optional(),
+  initiative: z.object({
+    enabled: z.boolean(), notify: z.boolean(),
+    quietStart: z.number().int().min(0).max(23), quietEnd: z.number().int().min(0).max(23),
+    dailyLimit: z.number().int().min(0).max(10),
+  }).partial().strict().optional(),
   voice: z.object({
     provider: z.enum(['volcengine', 'fish', 'elevenlabs', 'fixture']),
     speechRate: z.number().int().min(-50).max(100),
@@ -164,6 +182,7 @@ export function maskSettings(settings: Settings): PublicSettings {
   } = settings.voice;
   return {
     companion: settings.companion,
+    initiative: settings.initiative,
     brain: { ...brain, hasApiKey: Boolean(brainKey) },
     voice: {
       ...voice,

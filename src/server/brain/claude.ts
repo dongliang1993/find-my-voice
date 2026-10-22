@@ -62,7 +62,10 @@ export class ClaudeBrain implements Brain {
     this.session = query({
       prompt: this.input,
       options: {
-        systemPrompt: options.systemPrompt,
+        // Render fresh on every request. The SDK otherwise records the prompt at the
+        // start of a conversation and ignores later ones on resume, so edits to
+        // IDENTITY.md / MEMORY.md and the current time would never reach her.
+        systemPrompt: { type: 'custom', prompt: options.systemPrompt, snapshot: false },
         model: options.auth.model,
         env: { ...options.auth.env, CLAUDE_CONFIG_DIR: configDir },
         cwd: workspace,

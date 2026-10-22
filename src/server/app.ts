@@ -5,7 +5,11 @@ import { ClaudeBrain } from './brain/claude.js';
 import type { Brain } from './brain/types.js';
 import { ChatService } from './chat/service.js';
 import { ChatStore } from './chat/store.js';
-import { buildSystemPrompt } from './profile/profile.js';
+import { InitiativeScheduler } from './initiative/scheduler.js';
+import { notifySystem } from './initiative/notify.js';
+import { extractWithClaude } from './memory/claude.js';
+import { MemoryExtractor } from './memory/extractor.js';
+import { buildSystemPrompt, personaVersion } from './profile/profile.js';
 import { VoicePipeline } from './voice/pipeline.js';
 import type { TtsProvider } from './voice/provider.js';
 import { activeVoice, createTtsProvider, voiceReady } from './voice/registry.js';
@@ -20,6 +24,10 @@ export class App {
   readonly store: ChatStore;
   readonly chat: ChatService;
   readonly voice: VoicePipeline;
+  readonly memory: MemoryExtractor;
+  readonly initiative: InitiativeScheduler;
+  /** Each connected page and whether it is on screen right now. */
+  readonly presence = new Map<symbol, boolean>();
   private tts: TtsProvider;
 
   constructor(readonly dataDir: string, readonly log: (line: string) => void = line => process.stderr.write(`${line}\n`)) {
@@ -40,7 +48,31 @@ export class App {
           : 'auto';
       },
     });
-    this.chat = new ChatService({ store: this.store, voice: this.voice, createBrain: ({ fresh }) => this.createBrain(fresh), onLog: log });
+    this.chat = new ChatService({
+      store: this.store, voice: this.voice, onLog: log,
+      createBrain: ({ fresh }) => this.createBrain(fresh),
+      promptVersion: () => personaVersion(this.dataDir, this.settings.companion.name, new Date()),
+    });
+    this.memory = new MemoryExtractor({
+      store: this.store, dataDir,
+      extract: prompt => {
+        const auth = this.brainAuth();
+        if (auth.source === 'none') throw new DomainError('BRAIN_NOT_CONFIGURED', '还没有可用的模型凭证。');
+        return extractWithClaude(auth, dataDir, prompt, line => this.log(`[memory] ${line.trimEnd()}`));
+      },
+    });
+    this.initiative = new InitiativeScheduler({
+      store: this.store, chat: this.chat, memory: this.memory, onLog: line => this.log(`[initiative] ${line}`),
+      rules: () => this.settings.initiative,
+      notify: text => {
+        // A connected page handles it: on screen it is seen, in a background tab it raises a
+        // browser notification. Ring the OS only when no page is connected at all.
+        if (this.settings.initiative.notify && this.presence.size === 0) {
+          notifySystem(this.settings.companion.name, text, e => this.log(`[notify] ${e.message}`));
+        }
+      },
+    });
+    this.initiative.start();
   }
 
   private brainAuth() {
@@ -81,6 +113,7 @@ export class App {
   }
 
   async close() {
+    this.initiative.stop();
     await this.chat.close();
     this.store.close();
   }

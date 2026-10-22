@@ -32,6 +32,13 @@ export class App {
       audioDir: resolve(dataDir, 'audio'),
       voice: () => activeVoice(this.settings.voice),
       speechRate: () => this.settings.voice.speechRate,
+      // Only providers that accept a language hint consume this; the rest ignore it.
+      language: () => {
+        const voice = this.settings.voice;
+        return voice.provider === 'elevenlabs' ? voice.elevenlabs.language
+          : voice.provider === 'volcengine' ? voice.volcengine.language
+          : 'auto';
+      },
     });
     this.chat = new ChatService({ store: this.store, voice: this.voice, createBrain: ({ fresh }) => this.createBrain(fresh), onLog: log });
   }

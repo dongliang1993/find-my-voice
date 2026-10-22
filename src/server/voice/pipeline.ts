@@ -16,6 +16,8 @@ export type VoicePipelineOptions = {
   // Read on every call so settings changes apply without rebuilding the pipeline.
   voice: () => VoiceRef;
   speechRate: () => number;
+  /** `auto` or undefined sends no hint; providers decide what to do with the rest. */
+  language?: () => 'auto' | 'zh' | 'en';
 };
 
 export type SpeakResult = { path: string; durationSeconds: number };
@@ -37,8 +39,9 @@ export class VoicePipeline {
     const pcm: Buffer[] = [];
     for (const sentence of splitSentences(text, SPLIT)) {
       signal?.throwIfAborted();
+      const language = this.options.language?.() ?? 'auto';
       await this.options.provider.synthesize(
-        { text: sentence, voice: this.options.voice(), speechRate: this.options.speechRate() },
+        { text: sentence, voice: this.options.voice(), speechRate: this.options.speechRate(), ...(language === 'auto' ? {} : { language }) },
         { format: 'pcm', signal, onAudioChunk: async chunk => { pcm.push(chunk); onChunk(chunk); } },
       );
     }

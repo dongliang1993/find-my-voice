@@ -36,8 +36,14 @@ export const PCM_SAMPLE_RATE = 24000;
 // ---- REST: status and settings ----
 
 export type BrainSource = 'app' | 'claude-code' | 'environment' | 'none';
-export type VoiceProviderId = 'volcengine' | 'fish' | 'fixture';
+export type VoiceProviderId = 'volcengine' | 'fish' | 'elevenlabs' | 'fixture';
 export type FishModel = 's1' | 's1-mini' | 'speech-1.6' | 'speech-1.5';
+export type ElevenModel = 'eleven_multilingual_v2' | 'eleven_v4' | 'eleven_v4_turbo' | 'eleven_flash_v2_5';
+/**
+ * How the reading language is chosen. `auto` guesses from the text; the others force a normalizer.
+ * Providers that spell the codes differently map from these; Fish has no equivalent at all.
+ */
+export type SpeechLanguage = 'auto' | 'zh' | 'en';
 export type AppStatus = {
   companionName: string;
   brain: { source: BrainSource; ready: boolean; model: string | null };
@@ -50,8 +56,12 @@ export type PublicSettings = {
   brain: { baseUrl: string; model: string; hasApiKey: boolean };
   voice: {
     provider: VoiceProviderId; speechRate: number; timeoutMs: number;
-    volcengine: { resourceId: string; voiceId: string; hasApiKey: boolean };
+    volcengine: { resourceId: string; voiceId: string; language: SpeechLanguage; hasApiKey: boolean };
     fish: { referenceId: string; model: FishModel; hasApiKey: boolean };
+    elevenlabs: {
+      voiceId: string; model: ElevenModel; language: SpeechLanguage;
+      stability: number; similarity: number; hasApiKey: boolean;
+    };
   };
 };
 
@@ -60,7 +70,11 @@ export type SettingsUpdate = {
   brain?: { baseUrl?: string; apiKey?: string; model?: string };
   voice?: {
     provider?: VoiceProviderId; speechRate?: number;
-    volcengine?: { apiKey?: string; resourceId?: string; voiceId?: string };
+    volcengine?: { apiKey?: string; resourceId?: string; voiceId?: string; language?: SpeechLanguage };
     fish?: { apiKey?: string; referenceId?: string; model?: FishModel };
+    elevenlabs?: {
+      apiKey?: string; voiceId?: string; model?: ElevenModel; language?: SpeechLanguage;
+      stability?: number; similarity?: number;
+    };
   };
 };

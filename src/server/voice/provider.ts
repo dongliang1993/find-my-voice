@@ -2,7 +2,11 @@ import { randomUUID } from 'node:crypto';
 import { DomainError } from '../errors.js';
 
 export type VoiceRef = { id: string; resourceId: string };
-export type SynthesisInput = { text: string; voice: VoiceRef; speechRate: number; loudnessRate?: number; direction?: string };
+export type SynthesisInput = {
+  text: string; voice: VoiceRef; speechRate: number; loudnessRate?: number; direction?: string;
+  /** Resolved reading language; `auto`/undefined sends nothing. */
+  language?: 'zh' | 'en';
+};
 export type ProviderConfig = { apiKey: string; timeoutMs: number; userId: string };
 export type SynthesisResult = { audio: Buffer; extension: 'mp3' | 'wav'; mime: string; durationSeconds: number | null; spokenText?: string };
 export type SynthesisOptions = {
@@ -10,6 +14,14 @@ export type SynthesisOptions = {
   onAudioChunk?: (chunk: Buffer) => Promise<void>;
 };
 export interface TtsProvider { synthesize(input: SynthesisInput, options?: SynthesisOptions): Promise<SynthesisResult> }
+
+// Volcengine spells the codes differently ('zh-cn') and nests them in a JSON string.
+const VOLC_LANGUAGE: Record<'zh' | 'en', string> = { zh: 'zh-cn', en: 'en' };
+
+function additions(input: SynthesisInput): { additions?: string } {
+  if (!input.language) return {};
+  return { additions: JSON.stringify({ explicit_language: VOLC_LANGUAGE[input.language] }) };
+}
 
 // Streaming playback consumes raw signed 16-bit LE mono PCM; archives get one WAV header.
 export function pcmToWav(pcm: Buffer, sampleRate = 24000): Buffer {
@@ -122,6 +134,7 @@ export class VolcengineProvider implements TtsProvider {
         body: JSON.stringify({
           user: { uid: this.config.userId },
           req_params: { text: input.text, speaker: input.voice.id,
+            ...additions(input),
             audio_params: { format: options.format ?? 'mp3', sample_rate: 24000, speech_rate: input.speechRate, loudness_rate: input.loudnessRate ?? 0 } },
         }),
       });

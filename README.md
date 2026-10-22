@@ -13,7 +13,7 @@ npx find-my-voice
 | | 用途 | 怎么配置 |
 |---|---|---|
 | **大脑** | 她的思考与对话 | 已经在用 Claude Code 的话自动沿用其配置（API Key、网关、Bedrock/Vertex）。否则在设置里选服务商（Anthropic / DeepSeek / Kimi / 智谱）并粘贴 API Key |
-| **声音** | 她的语音 | 火山引擎「豆包语音合成大模型」的 API Key，在设置 → 声音里填写 |
+| **声音** | 她的语音 | 火山引擎「豆包语音合成大模型」、Fish Audio 或 ElevenLabs 的 API Key，在设置 → 声音里选一家填写 |
 
 需要 Node.js 22.13 或更高版本。
 
@@ -50,7 +50,7 @@ src/shared/protocol.ts     浏览器 ↔ 服务端的消息协议（两端共用
 src/server/
   brain/                   Claude Agent SDK 会话、认证探测、工具（send_voice）
   chat/                    对话编排（ChatService）与 SQLite 存储
-  voice/                   火山 TTS、按句切分、流式管线
+  voice/                   各家 TTS、按句切分、流式管线
   profile/                 IDENTITY.md / MEMORY.md 与人设 prompt
   http.ts                  REST + WebSocket
 web/src/                   React 聊天界面、Web Audio 流式播放

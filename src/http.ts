@@ -1,9 +1,8 @@
-import { randomBytes, timingSafeEqual } from 'node:crypto';
+import { timingSafeEqual } from 'node:crypto';
 import { readFileSync, statSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { Hono } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
-import { getCookie, setCookie, deleteCookie } from 'hono/cookie';
 import { serve } from '@hono/node-server';
 import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js';
 import { z, ZodError } from 'zod';
@@ -11,11 +10,12 @@ import { DomainError, errorPayload } from './errors.js';
 import type { VoiceService } from './service.js';
 import { createMcpServer } from './mcp.js';
 import { listVoices } from './catalog.js';
+import { settingsPatchSchema, watchSettings } from './config.js';
 
 const equal = (a: string, b: string) => a.length === b.length && timingSafeEqual(Buffer.from(a), Buffer.from(b));
 
 export function createHttpApp(service: VoiceService) {
-  const app = new Hono(); const sessions = new Map<string, number>();
+  const app = new Hono();
   app.onError((error, c) => {
     if (error instanceof ZodError || error instanceof SyntaxError) return c.json({ error: { code: 'INVALID_INPUT', message: '请求格式无效。' } }, 400);
     const status = error instanceof DomainError ? error.httpStatus : 500;
@@ -24,40 +24,32 @@ export function createHttpApp(service: VoiceService) {
   app.use('*', async (c, next) => {
     const url = new URL(c.req.url);
     const loopback = ['127.0.0.1', 'localhost', '[::1]'].includes(url.hostname);
-    if (!loopback && url.origin !== service.config.publicBaseUrl) throw new DomainError('INVALID_HOST', '请求 Host 不属于配置的服务地址。', 403);
+    if (!loopback) throw new DomainError('INVALID_HOST', '请求 Host 不属于本地回环地址。', 403);
     c.header('X-Content-Type-Options', 'nosniff'); c.header('Referrer-Policy', 'no-referrer'); c.header('Cache-Control', 'no-store');
     await next();
   });
   app.use('/api/*', bodyLimit({ maxSize: 256 * 1024 }));
+  // Service is loopback-only, so a local caller is already trusted: no session,
+  // no login. Only a foreign Origin is refused, which stops another site from
+  // driving the API through the browser.
   app.use('/api/*', async (c, next) => {
     if (c.req.method !== 'GET') {
       const origin = c.req.header('Origin');
-      if (origin && origin !== new URL(c.req.url).origin && origin !== service.config.publicBaseUrl) throw new DomainError('INVALID_ORIGIN', '拒绝跨来源管理请求。', 403);
-    }
-    if (c.req.path !== '/api/login') {
-      const session = getCookie(c, 'fmv_session');
-      if (!session || (sessions.get(session) || 0) <= Date.now()) throw new DomainError('UNAUTHORIZED', '请先打开本地管理入口。', 401);
+      const sameHost = origin ? new URL(origin).hostname === new URL(c.req.url).hostname : false;
+      if (origin && !sameHost) throw new DomainError('INVALID_ORIGIN', '拒绝跨来源管理请求。', 403);
     }
     await next();
   });
   app.get('/health', c => c.json({ ok: true, name: 'finding-my-voice', provider: service.config.provider }));
-  app.post('/api/login', async c => {
-    const body = z.object({ token: z.string().max(256) }).strict().parse(await c.req.json());
-    if (!equal(body.token, service.config.adminToken)) throw new DomainError('UNAUTHORIZED', '管理凭证无效。', 401);
-    for (const [id, expiry] of sessions) if (expiry <= Date.now()) sessions.delete(id);
-    const id = randomBytes(32).toString('hex'); sessions.set(id, Date.now() + 8 * 3600000);
-    setCookie(c, 'fmv_session', id, { httpOnly: true, sameSite: 'Strict', secure: new URL(c.req.url).protocol === 'https:', path: '/', maxAge: 8 * 3600 });
-    return c.json({ ok: true });
-  });
-  app.post('/api/logout', c => { const id = getCookie(c, 'fmv_session'); if (id) sessions.delete(id); deleteCookie(c, 'fmv_session'); return c.json({ ok: true }); });
   app.get('/api/state', c => {
     service.assets.cleanup();
-    const credentials = Boolean(service.config.volc.apiKey || (service.config.volc.appId && service.config.volc.accessKey));
     return c.json({ ...service.context(), pending: service.store.pendingList(service.config.ownerId),
       voices: listVoices(service.config), speeches: service.store.export(service.config.ownerId).speeches.slice(-20).reverse(),
-      configuration: { provider: service.config.provider, credentials_configured: credentials,
-        api_mode: service.config.apiMode,
-        resource_configured: Boolean(service.config.volc.resourceId || listVoices(service.config).some(v => v.enabled && v.resource_id)), bootstrap_voice_configured: Boolean(service.config.bootstrapVoice),
+      // Everything editable lives at GET /api/settings; state only carries what
+      // the rest of the page needs to render.
+      configuration: { provider: service.config.provider, api_mode: service.config.apiMode,
+        resource_configured: Boolean(service.config.volc.resourceId || listVoices(service.config).some(v => v.enabled && v.resource_id)),
+        settings_path: resolve(service.config.dataDir, 'settings.json'),
         max_characters: service.config.maxCharacters },
     });
   });
@@ -71,6 +63,10 @@ export function createHttpApp(service: VoiceService) {
     service.store.deactivateMemory(service.config.ownerId, body.id); return c.json({ ok: true });
   });
   app.get('/api/export', c => c.json({ ...service.store.export(service.config.ownerId), profile_documents: service.context().profile_documents }));
+  // Secrets are returned as flags only, never in the clear.
+  app.get('/api/settings', c => c.json(service.settings()));
+  // Partial patch: the page sends one group at a time and the merge fills the rest.
+  app.post('/api/settings', async c => c.json(service.applySettings(settingsPatchSchema.parse(await c.req.json()))));
   app.get('/api/audio/:id/refresh', c => c.json(service.assets.publicResult(service.store.speech(service.config.ownerId, c.req.param('id')))));
   // Owner UI provides a concrete way to test/audition voices without another MCP business tool.
   app.post('/api/speak', async c => c.json(await service.speak(await c.req.json(), true, false)));
@@ -130,20 +126,42 @@ export function createHttpApp(service: VoiceService) {
 
 export async function startHttp(service: VoiceService, port = service.config.port) {
   const app = createHttpApp(service);
-  const instance = serve({ fetch: app.fetch, hostname: service.config.host, port });
-  await new Promise<void>((resolvePromise, reject) => {
-    if (instance.listening) resolvePromise();
-    else { instance.once('listening', resolvePromise); instance.once('error', reject); }
-  });
+  // A fixed port is nicer for bookmarks but collides when a dev server or a
+  // second client already holds it. Fall back to a free port instead of dying:
+  // the MCP tools keep working, only the owner URL moves.
+  let instance = serve({ fetch: app.fetch, hostname: service.config.host, port });
+  try {
+    await new Promise<void>((resolvePromise, reject) => {
+      if (instance.listening) resolvePromise();
+      else { instance.once('listening', resolvePromise); instance.once('error', reject); }
+    });
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'EADDRINUSE') throw error;
+    console.error(`Port ${port} busy; the owner UI moves to a random port for this run.`);
+    instance = serve({ fetch: app.fetch, hostname: service.config.host, port: 0 });
+    await new Promise<void>((resolvePromise, reject) => {
+      if (instance.listening) resolvePromise();
+      else { instance.once('listening', resolvePromise); instance.once('error', reject); }
+    });
+  }
   const address = instance.address();
   if (!address || typeof address === 'string') throw new Error('HTTP address unavailable');
   const host = service.config.host.includes(':') ? `[${service.config.host}]` : service.config.host;
   const localUrl = `http://${host}:${address.port}`;
-  service.assets.baseUrl = service.config.publicBaseUrl || localUrl;
+  service.assets.baseUrl = localUrl;
   const cleanup = setInterval(() => { service.store.recoverStaleSpeech(Math.max(service.config.timeoutMs, service.config.seedAudioTimeoutMs)); service.assets.cleanup(); }, 60000);
   cleanup.unref();
+  // Host/port cannot change under a live listener; everything else takes effect
+  // immediately, so editing settings.json by hand is enough.
+  const watcher = watchSettings(config => {
+    if (config.host !== service.config.host || config.port !== service.config.port) {
+      console.error('settings: host/port changed; restart to move the listener.');
+    }
+    service.config = config;
+    service.reloadSettings();
+  }, error => console.error(`settings: ${error.message}`));
   return { app, instance, localUrl, close: async () => {
-    clearInterval(cleanup);
+    clearInterval(cleanup); watcher.close();
     await new Promise<void>((resolvePromise, reject) => instance.close(error => error ? reject(error) : resolvePromise()));
   } };
 }

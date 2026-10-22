@@ -99,7 +99,7 @@ test('CLI cannot become an automatic fallback: no diagnostic flag means no confi
   const x = setup(); t.after(x.cleanup);
   const unusedData = resolve(x.dir, 'must-not-be-created');
   const cli = resolve(projectRoot, 'scripts/speak.ts');
-  const env = { ...process.env, ...testEnv, DATA_DIR: unusedData };
+  const env = { ...process.env, ...testEnv, PLUGIN_DATA: unusedData };
   const rejected = spawnSync(process.execPath, ['--import', 'tsx', cli, '普通回复不运行脚本。'], { env, encoding: 'utf8' });
   assert.equal(rejected.status, 2);
   const errorLine = rejected.stderr.split('\n').find(line => line.startsWith('{'))!;
@@ -113,7 +113,7 @@ test('explicit developer diagnostic remains usable without becoming the normal A
   const x = setup(); t.after(x.cleanup);
   const result = spawnSync(process.execPath, ['--import', 'tsx', resolve(projectRoot, 'scripts/speak.ts'),
     '--diagnostic', '这是开发诊断测试音。', '--no-play'], {
-    env: { ...process.env, ...testEnv, VOLC_API_MODE: 'tts', DATA_DIR: x.dir }, encoding: 'utf8',
+    env: { ...process.env, ...testEnv, PLUGIN_DATA: x.dir }, encoding: 'utf8',
   });
   assert.equal(result.status, 0, result.stderr);
   const audio = JSON.parse(result.stdout).data;

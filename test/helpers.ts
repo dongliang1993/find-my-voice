@@ -1,20 +1,35 @@
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { parseConfig, projectRoot } from '../src/config.js';
+import { loadConfig, type Settings } from '../src/config.js';
 import { VoiceService } from '../src/service.js';
 import type { TtsProvider } from '../src/provider.js';
 
-export const testEnv = {
-  ADMIN_TOKEN: 'test-admin-token-000000000000000000000',
-  MCP_TOKEN: 'test-mcp-token-00000000000000000000000',
-  MEDIA_SIGNING_KEY: 'test-media-key-00000000000000000000000',
-  OWNER_ID: 'test-owner', TTS_PROVIDER: 'fixture', PORT: '0',
-  VOICE_REPLY_MODE: 'explicit', LOCAL_AUDIO_PLAYBACK: 'none',
+export const testEnv = { PATH: process.env.PATH || '' };
+export const testTokens = {
+  mcp: 'test-mcp-token-00000000000000000000000', signingKey: 'test-media-key-00000000000000000000000',
 };
-export function setup(provider?: TtsProvider, env: Record<string, string> = {}) {
+/** Old .env-style names, so tests can keep passing a flat override map. */
+const envNames: Record<string, [keyof Settings, string]> = {
+  TTS_PROVIDER: ['provider', 'type'], VOLC_API_KEY: ['provider', 'apiKey'], VOLC_APP_ID: ['provider', 'appId'],
+  VOLC_ACCESS_KEY: ['provider', 'accessKey'], VOLC_RESOURCE_ID: ['provider', 'resourceId'],
+  VOLC_DEFAULT_VOICE: ['provider', 'defaultVoice'], VOLC_API_MODE: ['provider', 'apiMode'],
+  VOICE_REPLY_MODE: ['voice', 'replyMode'], LOCAL_AUDIO_PLAYBACK: ['voice', 'localPlayback'],
+  OWNER_ID: ['owner', 'id'], PORT: ['server', 'port'],
+};
+
+/** Writes a settings.json into a throwaway dir so each test is isolated. */
+export function setup(provider?: TtsProvider, patch: Record<string, unknown> = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'finding-my-voice-test-'));
-  const config = parseConfig({ ...testEnv, DATA_DIR: dir, ...env }, projectRoot);
+  const settings: Record<string, Record<string, unknown>> = { tokens: testTokens };
+  for (const [key, value] of Object.entries(patch)) {
+    const mapped = envNames[key];
+    if (mapped) (settings[mapped[0]] ??= {})[mapped[1]] = value;
+    else settings[key] = value as Record<string, unknown>;
+  }
+  writeFileSync(join(dir, 'settings.json'), JSON.stringify(settings));
+  process.env.PLUGIN_DATA = dir;
+  const config = loadConfig();
   const service = new VoiceService(config, provider); service.assets.baseUrl = 'http://127.0.0.1:3210';
   return { service, config, dir, cleanup: () => { service.close(); rmSync(dir, { recursive: true, force: true }); } };
 }

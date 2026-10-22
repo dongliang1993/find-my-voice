@@ -16,7 +16,7 @@ const text = args.find(arg => !arg.startsWith('--') && args[args.indexOf(arg) - 
 if (!text) throw new Error(usage);
 const option = (key: string) => { const i = args.indexOf(key); return i >= 0 ? args[i + 1] : undefined; };
 const service = new VoiceService(loadConfig());
-service.assets.baseUrl = service.config.publicBaseUrl || `http://127.0.0.1:${service.config.port}`;
+service.assets.baseUrl = `http://127.0.0.1:${service.config.port}`;
 try {
   const result = await service.speak({ request_id: randomUUID(), text, voice_id: option('--voice'),
     playback: args.includes('--stream-play') ? 'stream' : args.includes('--no-play') || args.includes('--seed-audio') ? 'none' : undefined,

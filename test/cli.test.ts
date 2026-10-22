@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { projectRoot } from '../src/config.js';
-import { testEnv } from './helpers.js';
+
 
 function isolatedSetup(t: { after(fn: () => void): void }) {
   const dir = mkdtempSync(resolve(tmpdir(), 'find-my-voice-setup-cli-'));
@@ -14,21 +14,16 @@ function isolatedSetup(t: { after(fn: () => void): void }) {
   for (const folder of ['scripts', 'dist']) mkdirSync(resolve(dir, folder));
   symlinkSync(resolve(projectRoot, 'node_modules'), resolve(dir, 'node_modules'), 'dir');
   for (const file of ['scripts/setup-local.mjs', 'dist/cli-api.js', 'voices.example.json']) copyFileSync(resolve(projectRoot, file), resolve(dir, file));
-  const envFile = resolve(dir, '.env');
-  const content = Object.entries({ ...testEnv, TTS_PROVIDER: 'volcengine', VOLC_API_KEY: '', VOLC_RESOURCE_ID: '', VOLC_DEFAULT_VOICE: '' })
-    .map(([key, value]) => `${key}=${value}`).join('\n') + '\n';
-  writeFileSync(envFile, content, { mode: 0o600 });
-  const env = Object.fromEntries(Object.entries(process.env).filter(([key]) =>
-    !/^(VOLC_|TTS_|SEED_AUDIO_|VOICE_|LOCAL_AUDIO_|DATA_DIR$|PLUGIN_DATA$|OWNER_ID$|ADMIN_TOKEN$|MCP_TOKEN$|MEDIA_SIGNING_KEY$|PUBLIC_BASE_URL$)/.test(key)));
+  // settings.json is the only config input now; the CLI creates it on demand.
+  const env = { ...process.env, PLUGIN_DATA: resolve(dir, 'data'), PATH: process.env.PATH || '' };
   const run = (args: string[]) => spawnSync(process.execPath, [resolve(dir, 'scripts/setup-local.mjs'), ...args], { cwd: dir, env, encoding: 'utf8', timeout: 10000 });
-  return { dir, envFile, content, run };
+  return { dir, env, run };
 }
 
 test('default setup hands off to the current conversation without prompting or changing credentials', t => {
   const x = isolatedSetup(t);
   const result = x.run([]);
   assert.equal(result.status, 0, result.stderr);
-  assert.equal(readFileSync(x.envFile, 'utf8'), x.content);
   const json = x.run(['--json']);
   assert.equal(json.status, 0, json.stderr);
   const state = JSON.parse(json.stdout);
@@ -44,13 +39,14 @@ test('explicit import reuses only provider credentials and preserves private ide
   const result = x.run(['--import-config', source]);
   assert.equal(result.status, 0, result.stderr);
   assert.ok(!result.stdout.includes('import-test-key'));
-  const updated = readFileSync(x.envFile, 'utf8');
-  assert.ok(updated.includes('VOLC_API_KEY=import-test-key\n'));
-  assert.ok(updated.includes(`OWNER_ID=${testEnv.OWNER_ID}\n`));
-  assert.ok(updated.includes('VOICE_REPLY_MODE=explicit\n'));
-  assert.ok(updated.includes('VOLC_DEFAULT_VOICE_NAME="My Voice"\n'));
-  assert.ok(!updated.includes('do-not-copy'));
-  assert.equal(statSync(x.envFile).mode & 0o777, 0o600);
+  // The CLI now writes settings.json, not .env, and only the provider group.
+  const updated = JSON.parse(readFileSync(resolve(x.dir, 'data/settings.json'), 'utf8'));
+  assert.equal(updated.provider.apiKey, 'import-test-key');
+  assert.equal(updated.provider.defaultVoiceName, 'My Voice');
+  assert.equal(updated.provider.type, 'volcengine');
+  assert.equal(updated.voice.replyMode, 'explicit');
+  assert.ok(!JSON.stringify(updated).includes('do-not-copy'));
+  assert.equal(statSync(resolve(x.dir, 'data/settings.json')).mode & 0o777, 0o600);
   const state = JSON.parse(x.run(['--json']).stdout);
   assert.equal(state.provider_configured, true);
   assert.equal(state.memory_count, 0); assert.equal(state.identity_version, 0);
@@ -59,13 +55,14 @@ test('explicit import reuses only provider credentials and preserves private ide
 
 test('explicit legacy credential import replaces a previous API key without leaking either credential', t => {
   const x = isolatedSetup(t); const source = resolve(x.dir, 'legacy-private.env');
-  writeFileSync(x.envFile, x.content.replace('VOLC_API_KEY=\n', 'VOLC_API_KEY=previous-test-key\n'));
+  writeFileSync(resolve(x.dir, 'first.env'), 'VOLC_API_KEY=previous-test-key\n');
+  x.run(['--import-config', resolve(x.dir, 'first.env')]);
   writeFileSync(source, 'VOLC_APP_ID=legacy-test-app\nVOLC_ACCESS_KEY=legacy-test-key\n');
   const result = x.run(['--import-config', source]);
   assert.equal(result.status, 0, result.stderr);
-  const updated = readFileSync(x.envFile, 'utf8');
-  assert.ok(updated.includes('VOLC_API_KEY=\n'));
-  assert.ok(updated.includes('VOLC_APP_ID=legacy-test-app\n'));
+  const updated = JSON.parse(readFileSync(resolve(x.dir, 'data/settings.json'), 'utf8'));
+  assert.equal(updated.provider.apiKey, '');
+  assert.equal(updated.provider.appId, 'legacy-test-app');
   assert.ok(!result.stdout.includes('legacy-test-key'));
   assert.equal(JSON.parse(x.run(['--json']).stdout).provider_configured, true);
 });
@@ -75,7 +72,6 @@ test('read-only JSON rejects credential mutations and Agent launch; missing cred
   for (const args of [['--json', '--connect'], ['--json', '--agent', 'codex'], ['--json', '--agent', 'request'], ['--advanced'], ['--connect'], ['--import-config'], ['--agent'], ['--history'], ['--refresh-profile']]) {
     const result = x.run(args);
     assert.equal(result.status, 1, JSON.stringify(args));
-    assert.equal(readFileSync(x.envFile, 'utf8'), x.content);
   }
 });
 
@@ -87,7 +83,6 @@ test('setup request fallback works without TTY or credentials and retains multip
   writeFileSync(sources[0]!, '{"messages":[]}'); writeFileSync(sources[1]!, '仅测试材料。');
   const result = x.run(['--agent', 'request', ...sources.flatMap(path => ['--history', path])]);
   assert.equal(result.status, 0, result.stderr);
-  assert.equal(readFileSync(x.envFile, 'utf8'), x.content);
   const state = JSON.parse(x.run(['--json']).stdout);
   assert.equal(state.profile_documents.ready, false);
   assert.equal(state.next_step, 'memory');

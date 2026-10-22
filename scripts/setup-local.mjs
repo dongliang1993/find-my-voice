@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync, renameSync, realpathSync } from 'node:fs';
+import { readFileSync, realpathSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseEnv } from 'node:util';
@@ -34,6 +34,13 @@ export function setupOptions(args) {
   if (args.includes('--json') && (connect || args.includes('--agent'))) throw new Error('--json is read-only; do not combine it with connection changes or Agent launch.');
   return { connect, advanced, importConfig, agent, histories, refresh: args.includes('--refresh-profile') };
 }
+
+// --import-config still reads a .env, so its key names are mapped onto the
+// settings.json provider group on the way in.
+const envToSetting = {
+  TTS_PROVIDER: 'type', VOLC_API_KEY: 'apiKey', VOLC_APP_ID: 'appId', VOLC_ACCESS_KEY: 'accessKey',
+  VOLC_RESOURCE_ID: 'resourceId', VOLC_DEFAULT_VOICE: 'defaultVoice', VOLC_DEFAULT_VOICE_NAME: 'defaultVoiceName',
+};
 
 export function providerSettings(content) {
   const parsed = parseEnv(content);
@@ -77,18 +84,24 @@ function secretQuestion(prompt) {
 
 async function main() {
   const options = setupOptions(argv);
-  const original = readFileSync(envPath, 'utf8');
+  const { ensureSettings, readSettings, mergeSettings, loadConfig, VoiceService, extractSetupProfile } = await import('../dist/cli-api.js');
+  ensureSettings();
   const changes = options.importConfig ? providerSettings(readFileSync(resolve(options.importConfig), 'utf8')) : {};
   if (options.importConfig && !changes.VOLC_API_KEY && !(changes.VOLC_APP_ID && changes.VOLC_ACCESS_KEY)) {
     throw new Error('The selected file has no usable provider credentials. No configuration was changed.');
   }
-  const configured = { ...parseEnv(original), ...changes };
+  // Only provider fields are ever written here; owner, tokens and limits stay put.
+  const patch = {};
   if (options.connect) {
-    console.log('连接语音服务 · 凭证只保存在本机，不生成收费音频。资源参数由候选目录提供，不要求手填音色 ID。');
-    if (!configured.VOLC_API_KEY && !(configured.VOLC_APP_ID && configured.VOLC_ACCESS_KEY)) {
+    console.log('连接语音服务 · 凭证只保存在本机 settings.json，不生成收费音频。资源参数由候选目录提供，不要求手填音色 ID。');
+    const current = readSettings().provider ?? {};
+    // An explicit import already supplied the credential; only prompt when it is
+    // absent from both the existing file and the import.
+    const supplied = changes.VOLC_API_KEY || (changes.VOLC_APP_ID && changes.VOLC_ACCESS_KEY);
+    if (!supplied && !current.apiKey && !(current.appId && current.accessKey)) {
       if (!interactive) throw new Error('Use setup --connect in an interactive terminal, or explicitly reuse a local file with --import-config FILE. Never paste keys into chat.');
       const key = await secretQuestion('火山 API Key（输入不回显；回车跳过，保留已有记忆和画像）：');
-      if (key) { changes.VOLC_API_KEY = key; configured.VOLC_API_KEY = key; }
+      if (key) changes.VOLC_API_KEY = key;
     }
     if (options.advanced) {
       if (!interactive) throw new Error('--advanced requires an interactive terminal.');
@@ -103,13 +116,15 @@ async function main() {
         }
       } finally { rl.close(); }
     }
+    if (options.importConfig || Object.keys(changes).length) changes.TTS_PROVIDER = 'volcengine';
   }
   if (Object.keys(changes).length) {
-    writeFileSync(`${envPath}.tmp`, updatePrivateEnv(original, changes), { mode: 0o600 });
-    renameSync(`${envPath}.tmp`, envPath);
-    console.log('本机语音配置已保存；请重载客户端 MCP 连接。记忆、画像及语音模式未修改。');
+    // .env key names map onto the provider group of settings.json.
+    patch.provider = Object.fromEntries(Object.entries(changes)
+      .map(([key, value]) => [envToSetting[key], value]).filter(([key]) => key));
+    mergeSettings(patch);
+    console.log('本机语音配置已保存到 settings.json；重连 MCP 后生效。记忆、画像及语音模式未修改。');
   }
-  const { loadConfig, VoiceService, extractSetupProfile } = await import('../dist/cli-api.js');
   const config = loadConfig(); const service = new VoiceService(config);
   // This CLI does not host a review server. The host agent obtains live review URLs from its MCP connection.
   service.assets.baseUrl = '';

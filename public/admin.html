@@ -2,13 +2,34 @@
 <html lang="zh-CN">
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Finding My Voice · 声音实验</title>
 <style>
-*{box-sizing:border-box}body{margin:0;background:#f3f5ef;color:#233c34;font:14px system-ui,-apple-system,sans-serif}main{max-width:1100px;margin:auto;padding:48px 32px}header{display:flex;justify-content:space-between;align-items:center;gap:16px;margin-bottom:35px}.eyebrow{font-size:11px;letter-spacing:2px;color:#708373}h1{font-size:34px;font-weight:600;margin:10px 0}h2{font-size:18px;margin:0 0 18px}h3{font-size:15px;margin:0 0 10px}.muted{color:#798578;font-size:12px;line-height:1.7}.grid{display:grid;grid-template-columns:1.2fr 1fr;gap:20px}.panel{border:1px solid #dde4d8;background:#fffefa;border-radius:18px;padding:25px;margin-bottom:20px}.wide{grid-column:1/-1}button{border:1px solid #d5ddcf;background:#f3f5ef;padding:9px 14px;border-radius:9px;color:#314e3f;cursor:pointer;font:inherit}button.primary{background:#294d3c;color:#fff;border-color:#294d3c}button:disabled{opacity:.5;cursor:default}.actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.status{border-radius:8px;font-size:12px;padding:7px 10px;background:#e8eee3}.status.test{background:#f4e3c9;color:#825f26}label{display:block;margin:12px 0 7px;font-size:12px;color:#70806f}textarea,select,input{font:inherit;color:inherit;border:1px solid #d6dfd0;border-radius:9px;background:white;padding:11px;width:100%}textarea{min-height:125px;line-height:1.8;resize:vertical}input[type=checkbox]{width:auto;margin-right:8px}.item{padding:16px 0;border-top:1px solid #e7eade;line-height:1.75}.item:first-child{border-top:0;padding-top:0}.item p{margin:4px 0 9px}.tag{display:inline-block;background:#edf0e7;font-size:11px;padding:2px 7px;border-radius:5px;margin-right:5px}.empty{padding:15px 0;color:#8b9385;line-height:1.9}.notice{padding:16px;background:#eef2e7;border-radius:10px;line-height:1.8;margin-bottom:20px}.error{background:#f8e4df;color:#8b3d30}#toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%);background:#294d3c;color:#fff;padding:12px 20px;border-radius:10px;max-width:90vw;z-index:5}iframe{width:100%;height:270px;border:0;margin-top:16px}details{margin:10px 0;color:#60715d}summary{cursor:pointer}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#eff1e8;padding:15px;border-radius:8px;font-size:12px}button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:3px solid #b6cbaa;outline-offset:2px}#login{max-width:700px}#app[hidden],#login[hidden],#toast[hidden]{display:none}a{color:#355d43}@media(max-width:740px){main{padding:28px 16px}.grid{grid-template-columns:1fr}header{align-items:flex-start}h1{font-size:28px}.panel{padding:20px}header .actions{justify-content:flex-end}}
+*{box-sizing:border-box}body{margin:0;background:#f3f5ef;color:#233c34;font:14px system-ui,-apple-system,sans-serif}main{max-width:1100px;margin:auto;padding:48px 32px}header{display:flex;justify-content:space-between;align-items:center;gap:16px;margin-bottom:35px}.eyebrow{font-size:11px;letter-spacing:2px;color:#708373}h1{font-size:34px;font-weight:600;margin:10px 0}h2{font-size:18px;margin:0 0 18px}h3{font-size:15px;margin:0 0 10px}.muted{color:#798578;font-size:12px;line-height:1.7}.grid{display:grid;grid-template-columns:1.2fr 1fr;gap:20px}.panel{border:1px solid #dde4d8;background:#fffefa;border-radius:18px;padding:25px;margin-bottom:20px}.wide{grid-column:1/-1}button{border:1px solid #d5ddcf;background:#f3f5ef;padding:9px 14px;border-radius:9px;color:#314e3f;cursor:pointer;font:inherit}button.primary{background:#294d3c;color:#fff;border-color:#294d3c}button:disabled{opacity:.5;cursor:default}.actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.status{border-radius:8px;font-size:12px;padding:7px 10px;background:#e8eee3}.status.test{background:#f4e3c9;color:#825f26}label{display:block;margin:12px 0 7px;font-size:12px;color:#70806f}textarea,select,input{font:inherit;color:inherit;border:1px solid #d6dfd0;border-radius:9px;background:white;padding:11px;width:100%}textarea{min-height:125px;line-height:1.8;resize:vertical}input[type=checkbox]{width:auto;margin-right:8px}.item{padding:16px 0;border-top:1px solid #e7eade;line-height:1.75}.item:first-child{border-top:0;padding-top:0}.item p{margin:4px 0 9px}.tag{display:inline-block;background:#edf0e7;font-size:11px;padding:2px 7px;border-radius:5px;margin-right:5px}.empty{padding:15px 0;color:#8b9385;line-height:1.9}.notice{padding:16px;background:#eef2e7;border-radius:10px;line-height:1.8;margin-bottom:20px}.error{background:#f8e4df;color:#8b3d30}#toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%);background:#294d3c;color:#fff;padding:12px 20px;border-radius:10px;max-width:90vw;z-index:5}iframe{width:100%;height:270px;border:0;margin-top:16px}details{margin:10px 0;color:#60715d}summary{cursor:pointer}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#eff1e8;padding:15px;border-radius:8px;font-size:12px}button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:3px solid #b6cbaa;outline-offset:2px}#login{max-width:700px}#app[hidden],#login[hidden],#toast[hidden]{display:none}a{color:#355d43}@media(max-width:740px){main{padding:28px 16px}.grid{grid-template-columns:1fr}header{align-items:flex-start}h1{font-size:28px}.panel{padding:20px}header .actions{justify-content:flex-end}}.secret{position:relative}.secret input{padding-right:44px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.4px}.secret .reveal{position:absolute;top:6px;right:6px;padding:6px 9px;line-height:1;background:transparent;border-color:transparent;font-size:14px;opacity:.55}.secret .reveal:hover{opacity:1;background:#eef1e8}.secret .reveal[aria-pressed=true]{opacity:1;background:#e5ebdc}
 </style></head>
 <body><main>
 <header><div><div class="eyebrow">FINDING MY VOICE</div><h1>声音实验</h1><div class="muted">从共同经历，到表达方式，再到一个声音。</div></div><div class="actions"><span id="provider" class="status">本地实验</span><button id="refresh">刷新</button><button id="export">导出记录</button></div></header>
-<section id="login" class="panel"><h2>打开本地管理入口</h2><p class="muted">管理入口用于确认具体记忆和角色变更，查看声音配置与试听结果。</p><p>在项目目录运行以下命令，凭证会在本地完成登录：</p><pre id="open-command"></pre></section>
+<section id="login" class="panel"><h2>打不开管理页</h2><p class="muted">服务只监听本机回环地址，直接访问即可，不需要登录。</p><p class="muted">请确认服务已在运行，然后打开：</p><pre id="open-command"></pre></section>
 <div id="app" hidden>
-  <div id="setup" class="notice" hidden></div>
+  <section class="panel wide"><h2>语音服务配置 <span id="cfg-state" class="tag"></span></h2>
+    <form id="cfg-form">
+      <label for="cfg-provider">服务方式</label>
+      <select id="cfg-provider"><option value="fixture">测试提示音 · 不调用供应商，不计费</option><option value="volcengine">火山引擎 · 真实语音合成</option></select>
+      <label for="cfg-key">火山 API Key</label>
+      <div class="secret"><input id="cfg-key" type="password" autocomplete="off" placeholder="尚未配置">
+        <button type="button" class="reveal" data-for="cfg-key" aria-label="显示或隐藏" aria-pressed="false">👁</button></div>
+      <details><summary>旧版控制台：App ID + Access Key</summary>
+        <label for="cfg-appid">VOLC_APP_ID</label>
+        <div class="secret"><input id="cfg-appid" type="password" autocomplete="off" placeholder="尚未配置">
+          <button type="button" class="reveal" data-for="cfg-appid" aria-label="显示或隐藏" aria-pressed="false">👁</button></div>
+        <label for="cfg-access">VOLC_ACCESS_KEY</label>
+        <div class="secret"><input id="cfg-access" type="password" autocomplete="off" placeholder="尚未配置">
+          <button type="button" class="reveal" data-for="cfg-access" aria-label="显示或隐藏" aria-pressed="false">👁</button></div>
+      </details>
+      <label for="cfg-resource">资源 ID</label>
+      <input id="cfg-resource" autocomplete="off" placeholder="例如 seed-tts-2.0">
+      <label for="cfg-voice">首选音色 speaker ID（可留空）</label>
+      <input id="cfg-voice" autocomplete="off" placeholder="留空则用音色目录里的候选项">
+      <div class="actions" style="margin-top:15px"><button id="cfg-save" class="primary">保存并生效</button><button type="button" id="cfg-clear">清空密钥</button></div>
+    </form>
+  </section>
   <div class="grid">
     <section class="panel wide"><h2>待确认的变化 <span id="pending-count" class="tag">0</span></h2><div id="pending"></div></section>
     <section class="panel"><h2>共同经历</h2><div id="memories"></div></section>
@@ -18,10 +39,10 @@
   </div>
 </div><div id="toast" role="status" hidden></div>
 </main><script type="module">
-const $=id=>document.getElementById(id);let state=null;let toastTimer;let modeInitialized=false;
+const $=id=>document.getElementById(id);let state=null;let settings=null;let toastTimer;let modeInitialized=false;
 const node=(tag,text,className)=>{const n=document.createElement(tag);if(text!==undefined)n.textContent=String(text);if(className)n.className=className;return n};
 function toast(text){clearTimeout(toastTimer);$('toast').textContent=text;$('toast').hidden=false;toastTimer=setTimeout(()=>$('toast').hidden=true,6500)}
-async function api(path,body){const r=await fetch(path,{method:body?'POST':'GET',headers:body?{'Content-Type':'application/json'}:{},body:body?JSON.stringify(body):undefined});const payload=await r.json();if(!r.ok)throw new Error(payload.error?.message||'操作失败。');return payload}
+async function api(path,body,method){const r=await fetch(path,{method:method||(body?'POST':'GET'),headers:body?{'Content-Type':'application/json'}:{},body:body?JSON.stringify(body):undefined});const payload=await r.json();if(!r.ok)throw new Error(payload.error?.message||'操作失败。');return payload}
 const command=`npm run admin -- ${location.origin}${location.pathname}`;$('open-command').textContent=command;
 function button(label,callback,primary=false){const b=node('button',label,primary?'primary':'');b.type='button';b.onclick=async()=>{b.disabled=true;try{await callback()}catch(e){toast(e.message)}finally{b.disabled=false}};return b}
 function empty(target,text){target.replaceChildren(node('div',text,'empty'))}
@@ -29,6 +50,7 @@ function describeIdentity(target,identity){if(!identity){empty(target,'角色尚
 function showPlayer(result){$('player').replaceChildren();const f=node('iframe');f.title='语音播放器';f.src=result.player_url;$('player').append(f)}
 function render(){
   $('login').hidden=true;$('app').hidden=false;const fixture=state.configuration.provider==='fixture';$('provider').textContent=fixture?'测试模式 · 提示音':'火山引擎';$('provider').classList.toggle('test',fixture);
+  renderSettings(settings);
   if(!modeInitialized){$('generation-mode').value=state.configuration.api_mode;modeInitialized=true}updateMode();
   const pending=state.pending.filter(p=>p.state==='pending');$('pending-count').textContent=String(pending.length);$('pending').replaceChildren();if(!pending.length)empty($('pending'),'没有待确认的变更。你可以在对话中提出需要保存的经历或角色变化。');
   for(const p of pending){const card=node('article',undefined,'item');card.id=`pending-${p.id}`;card.append(node('h3',p.kind==='memory'?'保存共同经历':'角色 / 声音变化'));const checks=[];
@@ -40,10 +62,36 @@ function render(){
   $('identity').replaceChildren();$('version').textContent=state.identity.version?`声音 v${state.identity.version}`:'声音未确认';if(docs?.identity.content){$('identity').append(node('h3','IDENTITY.md'),node('p',docs.identity.path,'muted'),node('pre',docs.identity.content))}else empty($('identity'),'请让宿主 Agent 根据 MEMORY.md 生成本地 IDENTITY.md。');if(state.identity.voice)$('identity').append(node('h3','已确认的声音'),node('p',state.identity.voice.voice_id),node('p',state.identity.voice.reason,'muted'));
   $('speeches').replaceChildren();if(!state.speeches.length)empty($('speeches'),'试听后，真实生成的结果会出现在这里。');for(const s of state.speeches){const d=node('div',undefined,'item');d.append(node('span',s.provider==='fixture'?'测试提示音':s.voice_name,'tag'),node('p',s.text),node('p',`${new Date(s.created_at).toLocaleString()} · ${s.state}`,'muted'));if(s.state==='completed'&&Date.parse(s.expires_at)>Date.now())d.append(button('播放 / 刷新链接',async()=>showPlayer(await api(`/api/audio/${s.id}/refresh`))));$('speeches').append(d)}
 }
-async function load(){try{state=await api('/api/state');render()}catch(e){$('login').hidden=false;$('app').hidden=true;if(!/管理入口/.test(e.message))toast(e.message)}}
+async function load(){try{state=await api('/api/state');settings=await api('/api/settings');$('login').hidden=true;render()}catch(e){$('login').hidden=false;$('app').hidden=true;toast(e.message)}}
 $('refresh').onclick=load;$('export').onclick=async()=>{try{const data=await api('/api/export');const url=URL.createObjectURL(new Blob([JSON.stringify(data,null,2)],{type:'application/json'}));const a=node('a');a.href=url;a.download=`finding-my-voice-${new Date().toISOString().slice(0,10)}.json`;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)}catch(e){toast(e.message)}};
-function updateMode(){if(!state)return;const creative=$('generation-mode').value==='seed-audio';$('direction-field').hidden=!creative;const enabled=state.voices.filter(v=>v.enabled);const old=$('voice-select').value;const options=enabled.map(v=>{const o=node('option',v.name);o.value=v.id;return o});if(creative){const o=node('option','按描述设计声音');o.value='';options.unshift(o)}$('voice-select').replaceChildren(...options);if(old===''&&creative)$('voice-select').value='';else if(enabled.some(v=>v.id===old))$('voice-select').value=old;else if(state.identity.voice)$('voice-select').value=state.identity.voice.voice_id;$('speak').disabled=!creative&&!enabled.length;$('limit').textContent=`单次最多 ${creative?Math.min(400,state.configuration.max_characters):state.configuration.max_characters} 字`;const missing=[];if(state.configuration.provider!=='fixture'){if(!state.configuration.credentials_configured)missing.push('API 凭证');if(!creative&&!state.configuration.resource_configured)missing.push('资源 ID');if(!creative&&!enabled.length)missing.push('测试音色')}$('setup').hidden=!missing.length;$('setup').textContent=`尚未配置：${missing.join('、')}。请填写本地 .env 并重启服务，随后验证真实音频。`}
+function updateMode(){if(!state)return;const creative=$('generation-mode').value==='seed-audio';$('direction-field').hidden=!creative;const enabled=state.voices.filter(v=>v.enabled);const old=$('voice-select').value;const options=enabled.map(v=>{const o=node('option',v.name);o.value=v.id;return o});if(creative){const o=node('option','按描述设计声音');o.value='';options.unshift(o)}$('voice-select').replaceChildren(...options);if(old===''&&creative)$('voice-select').value='';else if(enabled.some(v=>v.id===old))$('voice-select').value=old;else if(state.identity.voice)$('voice-select').value=state.identity.voice.voice_id;$('speak').disabled=!creative&&!enabled.length;$('limit').textContent=`单次最多 ${creative?Math.min(400,state.configuration.max_characters):state.configuration.max_characters} 字`}
+// Settings render from their own endpoint so the form always reflects what is
+// actually stored, never a stale copy derived from /api/state.
+function renderSettings(s){const p=s.provider;const badge=$('cfg-state');const ok=p.apiKeyConfigured||p.legacyPairConfigured;
+  badge.textContent=p.type==='fixture'?'测试模式':`${ok?'已配置凭证':'缺少凭证'} · ${p.resourceId?'资源已配置':'缺少资源 ID'}`;
+  badge.className=p.type==='fixture'||(ok&&p.resourceId)?'tag':'tag error';
+  $('cfg-provider').value=p.type;$('cfg-resource').value=p.resourceId||'';$('cfg-voice').value=p.defaultVoice||'';
+  // Secrets are echoed back masked; clearing a box then means "keep", not "erase".
+  $('cfg-key').value=p.apiKey||'';$('cfg-appid').value=p.appId||'';$('cfg-access').value=p.accessKey||''}
+document.addEventListener('click',e=>{const b=e.target.closest('.reveal');if(!b)return;
+  const input=$(b.dataset.for);const shown=input.type==='text';
+  input.type=shown?'password':'text';b.setAttribute('aria-pressed',String(!shown));b.textContent=shown?'👁':'🙈'});
+$('cfg-form').onsubmit=async e=>{e.preventDefault();const b=$('cfg-save');b.disabled=true;
+  const provider={type:$('cfg-provider').value,resourceId:$('cfg-resource').value.trim(),defaultVoice:$('cfg-voice').value.trim()};
+  // Empty password fields mean "keep the stored value", never "erase it".
+  for(const [id,key] of [['cfg-key','apiKey'],['cfg-appid','appId'],['cfg-access','accessKey']]){const v=$(id).value.trim();if(v)provider[key]=v}
+  try{await api('/api/settings',{provider},'POST');
+    // Re-mask after saving so a revealed secret does not stay on screen.
+    for(const node of document.querySelectorAll('.reveal')){$(node.dataset.for).type='password';node.setAttribute('aria-pressed','false');node.textContent='👁'}
+    toast('已生效；现在可以直接试听。');await load()}catch(err){toast(err.message)}finally{b.disabled=false}};
+$('cfg-clear').onclick=async()=>{try{await api('/api/settings',{provider:{apiKey:'',appId:'',accessKey:''}},'POST');toast('已清空本地保存的密钥。');await load()}catch(e){toast(e.message)}};
 $('generation-mode').onchange=updateMode;
-$('speak-form').onsubmit=async e=>{e.preventDefault();const b=$('speak');b.disabled=true;b.textContent='正在生成…';try{const creative=$('generation-mode').value==='seed-audio';const result=await api('/api/speak',{request_id:crypto.randomUUID(),text:$('speak-text').value,generation_mode:$('generation-mode').value,...($('voice-select').value?{voice_id:$('voice-select').value}:{}),...(creative&&$('direction').value.trim()?{speech_direction:$('direction').value.trim()}:{})});showPlayer(result.data);await load()}catch(error){toast(error.message)}finally{updateMode();b.textContent='生成并试听'}};
-const token=new URLSearchParams(location.hash.slice(1)).get('token');history.replaceState(null,'',location.pathname+location.search);if(token){try{await api('/api/login',{token})}catch(e){toast(e.message)}}await load();
+$('speak-form').onsubmit=async e=>{e.preventDefault();const creative=$('generation-mode').value==='seed-audio';const direction=$('direction').value.trim();
+  // Seed Audio needs either a chosen voice or a description; fail here with a
+  // usable message instead of a server-side VOICE_REQUIRED round trip.
+  if(creative&&!$('voice-select').value&&!direction)return toast('选一个音色，或填写声音描述。');
+  const b=$('speak');b.disabled=true;b.textContent='正在生成…';try{const result=await api('/api/speak',{request_id:crypto.randomUUID(),text:$('speak-text').value,generation_mode:$('generation-mode').value,...($('voice-select').value?{voice_id:$('voice-select').value}:{}),...(creative&&direction?{speech_direction:direction}:{})});showPlayer(result.data);await load()}catch(error){toast(error.message)}finally{updateMode();b.textContent='生成并试听'}};
+// Drop a stale #token= left by an older build so the address stays clean.
+if(location.hash)history.replaceState(null,'',location.pathname+location.search);
+await load();
 </script></body></html>

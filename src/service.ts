@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import type { Config } from './config.js';
+import { applySettings, loadConfig, type Config, type DeepPartial, type Settings } from './config.js';
 import { configuredVoice, listVoices, type Voice } from './catalog.js';
 import { DomainError } from './errors.js';
 import { Assets } from './assets.js';
@@ -12,17 +12,55 @@ import { readProfile, writeProfileDocument } from './profile.js';
 import { voiceApiContract } from './speech-contract.js';
 
 export class VoiceService {
-  readonly store: Store; readonly assets: Assets; readonly provider: TtsProvider;
-  readonly creativeProvider: TtsProvider;
+  readonly store: Store; readonly assets: Assets;
   private inFlight = new Map<string, Promise<Speech>>();
   private playback?: StreamingPlayback;
-  constructor(readonly config: Config, provider?: TtsProvider,
+  private injectedProvider?: TtsProvider;
+  private _provider!: TtsProvider;
+  private _creativeProvider!: TtsProvider;
+  constructor(public config: Config, provider?: TtsProvider,
     private startPlayback: (config: Config, id: string, started: number) => Promise<StreamingPlayback> = PcmPlayback.start) {
     this.store = new Store(config.dataDir); this.assets = new Assets(config, this.store);
-    this.provider = provider ?? (config.provider === 'fixture' ? new FixtureProvider() : new VolcengineProvider(config));
-    this.creativeProvider = provider ?? (config.provider === 'fixture' ? new FixtureProvider() : new SeedAudioProvider(config));
+    this.injectedProvider = provider; this.rebuildProviders();
     this.store.recoverStaleSpeech(Math.max(config.timeoutMs, config.seedAudioTimeoutMs)); this.assets.cleanup();
   }
+  // Providers capture config at construction; switching provider or rotating
+  // credentials must rebuild them, otherwise the old key keeps being sent.
+  private rebuildProviders() {
+    if (this.injectedProvider) { this._provider = this.injectedProvider; this._creativeProvider = this.injectedProvider; return; }
+    const fixture = this.config.provider === 'fixture';
+    this._provider = fixture ? new FixtureProvider() : new VolcengineProvider(this.config);
+    this._creativeProvider = fixture ? new FixtureProvider() : new SeedAudioProvider(this.config);
+  }
+  get provider() { return this._provider; }
+  get creativeProvider() { return this._creativeProvider; }
+  /** Persists a patch, swaps in the rebuilt config and re-creates the providers. */
+  applySettings(patch: DeepPartial<Settings>) {
+    const p = patch.provider ?? {};
+    // Volcengine accepts either the new single key or the legacy app-id pair. A
+    // filled key wins, so clear the stale pair (and vice versa) to avoid mixing.
+    const normalised: DeepPartial<Settings> = { ...patch };
+    if (p.apiKey) normalised.provider = { ...p, appId: '', accessKey: '' };
+    else if (p.appId && p.accessKey) normalised.provider = { ...p, apiKey: '' };
+    this.config = applySettings(normalised);
+    this.rebuildProviders();
+    return this.settings();
+  }
+  /** Effective settings for the page: secrets reduced to flags. */
+  settings() {
+    const v = this.config.volc;
+    return {
+      provider: { type: this.config.provider, resourceId: v.resourceId, defaultVoice: this.config.bootstrapVoice,
+        defaultVoiceName: this.config.bootstrapVoiceName, apiMode: this.config.apiMode,
+        // Clear text: the page renders these as masked inputs with a reveal
+        // toggle. Loopback-only service, so this is not a new exposure.
+        apiKey: v.apiKey, appId: v.appId, accessKey: v.accessKey,
+        apiKeyConfigured: Boolean(v.apiKey), legacyPairConfigured: Boolean(v.appId && v.accessKey) },
+      voice: { replyMode: this.config.voiceReplyMode, localPlayback: this.config.localAudioPlayback },
+    };
+  }
+  /** Picks up an externally edited file without going through the page. */
+  reloadSettings() { this.config = loadConfig(); this.rebuildProviders(); }
   pendingResult(pending: Pending) {
     return {
       status: pending.state === 'pending' ? 'awaiting_confirmation' : pending.state,

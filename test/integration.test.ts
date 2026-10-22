@@ -6,24 +6,43 @@ import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { ElicitRequestSchema } from '@modelcontextprotocol/sdk/types.js';
 import { resolve } from 'node:path';
-import { existsSync } from 'node:fs';
-import { projectRoot } from '../src/config.js';
+import { existsSync, readFileSync, statSync } from 'node:fs';
+import { loadConfig, projectRoot } from '../src/config.js';
 import { createMcpServer, PLAYER_URI } from '../src/mcp.js';
 import { createHttpApp, startHttp } from '../src/http.js';
 import { setup, entries, persona, testEnv, memoryMarkdown, identityMarkdown } from './helpers.js';
 
-test('owner decision API requires its own session; MCP token cannot commit and cross-origin writes are rejected', async t => {
+test('loopback writes need no session; cross-origin writes are rejected and a public deployment restores the session check', async t => {
   const { service: s, cleanup } = setup(); t.after(cleanup); const app = createHttpApp(s);
   const p = s.memorySave({ request_id: 'http-memory-1', entries });
   const payload = JSON.stringify({ id: p.data.pending_id, approve: true, selected_indices: [1] });
-  const unauthorized = await app.request('http://127.0.0.1/api/decision', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${s.config.mcpToken}` }, body: payload });
-  assert.equal(unauthorized.status, 401); assert.equal(s.context().memories.length, 0);
-  const login = await app.request('http://127.0.0.1/api/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token: s.config.adminToken }) });
-  assert.equal(login.status, 200); const cookie = login.headers.get('set-cookie')!.split(';')[0]!;
-  const cross = await app.request('http://127.0.0.1/api/decision', { method: 'POST', headers: { Cookie: cookie, Origin: 'https://other.example', 'Content-Type': 'application/json' }, body: payload }); assert.equal(cross.status, 403);
-  const accepted = await app.request('http://127.0.0.1/api/decision', { method: 'POST', headers: { Cookie: cookie, Origin: 'http://127.0.0.1', 'Content-Type': 'application/json' }, body: payload });
-  assert.equal(accepted.status, 200); assert.equal(s.context().memories[0]?.content, entries[1].content);
+
+  // Loopback is local by definition: no login needed, and an MCP bearer token is not a substitute.
+  const anonymous = await app.request('http://127.0.0.1/api/decision', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${s.config.mcpToken}` }, body: payload });
+  assert.equal(anonymous.status, 200); assert.equal(s.context().memories[0]?.content, entries[1].content);
+
+  // A foreign Origin is still refused, even though no session is required.
+  const other = s.memorySave({ request_id: 'http-memory-2', entries });
+  const crossPayload = JSON.stringify({ id: other.data.pending_id, approve: true, selected_indices: [0] });
+  const cross = await app.request('http://127.0.0.1/api/decision', { method: 'POST', headers: { Origin: 'https://other.example', 'Content-Type': 'application/json' }, body: crossPayload });
+  assert.equal(cross.status, 403);
+
+  // Same-host different-port (random stdio port behind a proxy) is accepted.
+  const sameHost = await app.request('http://127.0.0.1/api/decision', { method: 'POST', headers: { Origin: 'http://127.0.0.1:9999', 'Content-Type': 'application/json' }, body: crossPayload });
+  assert.equal(sameHost.status, 200);
+
   const badHost = await app.request('http://evil.example/health'); assert.equal(badHost.status, 403);
+});
+test('owner page no longer depends on login routes', async t => {
+  const { service: s, cleanup } = setup(); t.after(cleanup); const app = createHttpApp(s);
+  // Removed endpoints must 404, so a stale page cannot silently keep calling them.
+  for (const path of ['/api/login', '/api/logout']) {
+    const response = await app.request(`http://127.0.0.1${path}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+    assert.equal(response.status, 404, path);
+  }
+  const state = await app.request('http://127.0.0.1/api/state');
+  assert.equal(state.status, 200);
+  assert.equal('publicBaseUrl' in s.config, false);
 });
 test('signed audio supports full/HEAD/range/suffix requests and refuses missing or tampered signatures', async t => {
   const { service: s, cleanup } = setup(); t.after(cleanup); const app = createHttpApp(s);
@@ -56,7 +75,7 @@ test('stdio MCP returns local audio paths and serves the optional player through
   const x = setup(); const client = new Client({ name: 'stdio-client', version: '1' });
   t.after(async () => { await client.close(); x.cleanup(); });
   const transport = new StdioClientTransport({ command: process.execPath, args: ['--import', 'tsx', resolve(projectRoot, 'src/stdio.ts')], cwd: projectRoot,
-    env: { ...testEnv, DATA_DIR: x.dir, PATH: process.env.PATH || '' }, stderr: 'pipe' });
+    env: { ...process.env, ...testEnv, PLUGIN_DATA: x.dir }, stderr: 'pipe' });
   await client.connect(transport);
   for (const [document, content] of [['memory', memoryMarkdown], ['identity', identityMarkdown]]) {
     const result = await client.callTool({ name: 'profile.write', arguments: { document, content, base_sha256: null } });
@@ -108,7 +127,6 @@ for (const outcome of ['decline', 'cancel', 'later', 'missing', 'unchecked', 'er
     assert.equal(output.status, 'awaiting_confirmation');
     assert.ok(output.data.review_command.includes(resolve(projectRoot, 'scripts/open-admin.mjs')));
     assert.ok(output.data.review_command.includes(output.data.review_url));
-    assert.ok(!JSON.stringify(result).includes(s.config.adminToken));
     assert.ok(!JSON.stringify(result).includes('host-form-failure-private-details'));
     assert.equal(s.store.pending(s.config.ownerId, output.data.pending_id).state, 'pending');
     assert.equal(s.context().memories.length, 0);
@@ -172,6 +190,57 @@ test('a local host without forms gets a pending draft and a full user-operated r
   assert.equal(output.data.review_command_run_by, 'user');
   assert.ok(output.data.review_command.startsWith(`'${process.execPath}' `));
   assert.ok(output.data.review_command.includes(resolve(projectRoot, 'scripts/open-admin.mjs')));
-  assert.ok(!output.data.review_command.includes(s.config.adminToken));
   assert.equal(s.context().memories.length, 0);
+});
+test('owner page can set provider credentials at runtime; blank fields keep the stored secret', async t => {
+  const { service: s, cleanup } = setup('fixture' as never); t.after(cleanup); const app = createHttpApp(s);
+  const post = (body: unknown) => app.request('http://127.0.0.1/api/settings', { method: 'POST', headers: { Origin: 'http://127.0.0.1', 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+
+  const initial = await (await app.request('http://127.0.0.1/api/settings')).json();
+  assert.equal(initial.provider.apiKeyConfigured, false);
+
+  const saved = await post({ provider: { type: 'volcengine', apiKey: 'k-123', resourceId: 'seed-tts-2.0' } });
+  assert.equal(saved.status, 200);
+  const after = await saved.json();
+  assert.equal(after.provider.type, 'volcengine');
+  assert.equal(after.provider.apiKeyConfigured, true);
+  assert.equal(after.provider.resourceId, 'seed-tts-2.0');
+  assert.equal(s.config.volc.apiKey, 'k-123');
+
+  // A blank password field must not erase what is already stored.
+  await post({ provider: { resourceId: 'other' } });
+  assert.equal(s.config.volc.apiKey, 'k-123');
+  assert.equal(s.config.volc.resourceId, 'other');
+
+  // A new key wins over the legacy pair, which is cleared to avoid mixing auth modes.
+  await post({ provider: { appId: 'app', accessKey: 'secret' } });
+  assert.equal(s.config.volc.apiKey, '');
+  assert.equal(s.config.volc.appId, 'app');
+  await post({ provider: { apiKey: 'k-456' } });
+  assert.equal(s.config.volc.apiKey, 'k-456');
+  assert.equal(s.config.volc.appId, '');
+  assert.equal(s.config.volc.accessKey, '');
+});
+test('settings persist as nested json in one private file and reload after restart', async t => {
+  const { service: s, cleanup, dir } = setup('fixture' as never); t.after(cleanup);
+  s.applySettings({ provider: { type: 'volcengine', apiKey: 'persisted-key', resourceId: 'seed-tts-2.0' } });
+  const file = resolve(dir, 'settings.json');
+  assert.equal(existsSync(file), true);
+  assert.equal(statSync(file).mode & 0o777, 0o600);
+  const saved = JSON.parse(readFileSync(file, 'utf8'));
+  assert.equal(saved.provider.apiKey, 'persisted-key');
+  assert.equal(saved.provider.type, 'volcengine');
+  // A later patch merges by group instead of replacing it wholesale.
+  s.applySettings({ provider: { apiMode: 'seed-audio' } });
+  const merged = JSON.parse(readFileSync(file, 'utf8'));
+  assert.equal(merged.provider.apiKey, 'persisted-key');
+  assert.equal(merged.provider.apiMode, 'seed-audio');
+  // A restart re-reads the file: no page interaction, no .env involved.
+  const reloaded = loadConfig();
+  assert.equal(reloaded.volc.apiKey, 'persisted-key');
+  assert.equal(reloaded.provider, 'volcengine');
+  // Clearing writes an empty value, and loadConfig must not fall back to .env.
+  s.applySettings({ provider: { apiKey: '' } });
+  assert.equal(JSON.parse(readFileSync(file, 'utf8')).provider.apiKey, '');
+  assert.equal(s.config.volc.apiKey, '');
 });

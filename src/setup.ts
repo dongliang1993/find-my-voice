@@ -76,8 +76,7 @@ export function setupStatus(config: Config, store: Store, baseUrl: string, local
     management_url: `${baseUrl}/admin`,
     playback: local ? { target: 'local_mac', mode: config.localAudioPlayback, automatic_playback_verified: false } :
       { target: 'browser', mode: 'audio_component', requires_user_activation: true, automatic_playback_verified: false },
-    web_connection: { public_https_configured: Boolean(config.publicBaseUrl),
-      remote_client_tested: false, single_owner_service: true },
+    web_connection: { remote_client_tested: false, single_owner_service: true },
     resume_prompt: '初始化或继续 Finding My Voice。读取 setup.start、context/default 及 identity-evolution 的 references/profile-format.md。由实际 AI 使用已获授权历史和原生记忆提取，不由安装脚本编造人格；支持 setup --agent codex --history FILE 无界面调用，或在能访问历史的原宿主提交同一请求。MEMORY.md 按日期组织、关联 session，包含当前有效记忆、时间线、冲突与待核实、同步记录；偏好变化保留新旧版本，不能把别人的经历或工程日志当个人记忆。IDENTITY.md 分为个人形象、性格与关系、声音、演化记录；先沿用已有形象，无则根据历史设计并标明初始设计，声音须与形象气质匹配；区分用户眼中的我、实际互动与暂时推断。已有资料先读后合并，保存核验并给出文件链接及覆盖缺口，不假装已读全部云端聊天。不走旧记忆/人格审核链路，没有 TTS 凭证也先完成文档；后续才连接、选声、经授权试听并由用户确认正式声音。',
   };
 }

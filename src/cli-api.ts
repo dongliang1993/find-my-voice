@@ -1,4 +1,4 @@
 // Bundled separately so an installed CLI never needs TypeScript dev dependencies.
-export { loadConfig } from './config.js';
+export { loadConfig, ensureSettings, readSettings, mergeSettings } from './config.js';
 export { VoiceService } from './service.js';
 export { extractSetupProfile } from './onboarding.js';

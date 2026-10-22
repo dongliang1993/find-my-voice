@@ -26,7 +26,8 @@
     "check:local": "node scripts/check-local.mjs",
     "speak": "tsx scripts/speak.ts",
     "verify:streaming": "node --import tsx scripts/verify-streaming.ts",
-    "export": "tsx scripts/export.ts"
+    "export": "tsx scripts/export.ts",
+    "dev:stdio": "npm run build && node dist/stdio.js"
   },
   "dependencies": {
     "@hono/node-server": "^1.19.0",

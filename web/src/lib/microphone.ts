@@ -26,7 +26,8 @@ const recorderMime = () => ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4',
   .find(type => typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported(type)) ?? '';
 
 class Microphone {
-  private stream: MediaStream | null = null;
+  /** The open capture stream, for callers that record it themselves. */
+  stream: MediaStream | null = null;
   private ctx: AudioContext | null = null;
   private analyser: AnalyserNode | null = null;
   private data: Float32Array<ArrayBuffer> | null = null;

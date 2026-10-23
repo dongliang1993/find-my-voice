@@ -7,6 +7,8 @@ export type InitiativeSchedulerOptions = {
   chat: { readonly busy: boolean; speakUp(request: SpeakUpRequest): Promise<SpeakUpResult> };
   memory: { run(): Promise<unknown> };
   rules: () => InitiativeRules;
+  /** See `InitiativeState.watching`: null no page, false a hidden one. */
+  watching?: () => boolean | null;
   /** Tells the user she said something while they may not be looking (system notification). */
   notify?: (text: string) => void;
   now?: () => Date;
@@ -79,6 +81,7 @@ export class InitiativeScheduler {
       now, lastUserAt: last.user, lastAssistantAt: last.assistant,
       lastInitiativeAt: store.lastInitiativeAt(), initiativesToday: store.initiativesSince(midnight),
       lastMorningDay: store.getState(MORNING_KEY), dueFollowups: store.dueFollowups(now), busy: chat.busy,
+      watching: this.options.watching?.() ?? null,
     });
     if (!candidate) return;
     // One missed-you offer per silence: if she let it pass, wait until the user speaks again.

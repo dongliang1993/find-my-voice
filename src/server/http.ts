@@ -74,6 +74,22 @@ export function createHttp(app: App, webRoot: string) {
       return c.json({ code: 'NAMING_FAILED', message: '这次没成，再试一次或直接输入一个名字。' }, 502);
     }
   });
+  // A spoken message in conversation: transcript only. The page then sends it
+  // over the socket like anything typed, so there is one path into the chat.
+  http.post('/api/hear', async c => {
+    const mime = (c.req.header('content-type') ?? '').split(';')[0]!.trim();
+    if (!/^audio\/[\w.+-]+$/.test(mime)) return c.json({ code: 'INVALID_INPUT', message: '需要一段录音。' }, 415);
+    const audio = Buffer.from(await c.req.arrayBuffer());
+    if (audio.length > MAX_CLIP_BYTES) return c.json({ code: 'CLIP_TOO_LARGE', message: '录音太长了。' }, 413);
+    if (!audio.length) return c.json({ code: 'INVALID_INPUT', message: '录音是空的。' }, 400);
+    try {
+      return c.json({ text: (await app.hear(audio, mime)).trim() });
+    } catch (error) {
+      if (error instanceof DomainError) return c.json(errorPayload(error), error.httpStatus as 400);
+      app.log(`hear failed: ${(error as Error).stack ?? error}`);
+      return c.json({ code: 'HEAR_FAILED', message: '没听清，再说一次或者打字。' }, 502);
+    }
+  });
   // The spoken answer to "what should I call you". Raw audio body; small on
   // purpose — a name takes seconds, and the page stops recording at 8.
   http.post('/api/onboarding/hear-alias', async c => {

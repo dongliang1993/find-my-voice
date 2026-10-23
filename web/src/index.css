@@ -261,6 +261,27 @@
   }
   .dark .grain { mix-blend-mode: screen; }
 
+  /**
+   * The same grain, running. Only worth it on the stage, where the film look is
+   * the point: the tile is 50% larger than its box so the shift never reveals an
+   * edge, and four steps a second is enough to read as film rather than noise.
+   */
+  .grain-live {
+    inset: -50%;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='220'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .5 0 0 0 0 .4 0 0 0 0 .35 0 0 0 1.2 -.1'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    mix-blend-mode: overlay;
+    animation: grain-shift 0.8s steps(4) infinite;
+  }
+  .dark .grain-live { mix-blend-mode: screen; }
+  @keyframes grain-shift {
+    0% { transform: translate(0, 0); }
+    25% { transform: translate(-3%, 2%); }
+    50% { transform: translate(2%, -3%); }
+    75% { transform: translate(-2%, -1%); }
+    100% { transform: translate(0, 0); }
+  }
+  @media (prefers-reduced-motion: reduce) { .grain-live { animation: none; } }
+
   /* Dot-matrix wordmark. Doto covers Latin; CJK names fall back to a dot mask below. */
   .dot-name {
     font-family: var(--font-dot);

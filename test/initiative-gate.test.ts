@@ -11,7 +11,7 @@ const rules: InitiativeRules = {
 const at = (hour: number, minute = 0) => new Date(2026, 9, 22, hour, minute);
 const base: InitiativeState = {
   now: at(15), lastUserAt: at(9), lastAssistantAt: at(9), lastInitiativeAt: null,
-  initiativesToday: 0, lastMorningDay: null, dueFollowups: [], busy: false,
+  initiativesToday: 0, lastMorningDay: null, dueFollowups: [], busy: false, watching: true,
 };
 
 test('nothing happens when nothing is due', () => {
@@ -72,4 +72,15 @@ test('does not stack messages when she spoke last and got no answer', () => {
   assert.equal(decideCandidate(rules, unanswered), null, 'her last message is still unanswered');
   const followupDespite = { ...unanswered, dueFollowups: [{ id: 'f1', topic: '面试', note: '' }] };
   assert.equal(decideCandidate(rules, followupDespite)?.kind, 'followup', 'a remembered date still matters');
+});
+
+test('waits while a tab is open but hidden', () => {
+  const due = { ...base, dueFollowups: [{ id: 'f1', topic: 'x', note: '' }] };
+  assert.equal(decideCandidate(rules, { ...due, watching: false }), null, 'a background tab is not a reader');
+  assert.equal(decideCandidate(rules, { ...due, watching: true })?.kind, 'followup');
+});
+
+test('still speaks with no page open at all, the OS notification carries it', () => {
+  const due = { ...base, dueFollowups: [{ id: 'f1', topic: 'x', note: '' }] };
+  assert.equal(decideCandidate(rules, { ...due, watching: null })?.kind, 'followup');
 });

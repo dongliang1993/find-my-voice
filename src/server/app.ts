@@ -69,6 +69,9 @@ export class App {
       store: this.store, chat: this.chat, memory: this.memory, onLog: line => this.log(`[initiative] ${line}`),
       // The gate stays a pure consumer of knobs; the mode→knobs mapping lives in config.
       rules: () => resolveInitiative(this.settings.initiative, this.settings.companion.rhythm),
+      // null when no page is connected at all — then the OS notification is the
+      // delivery, so she still speaks. False means a tab is there but hidden.
+      watching: () => this.presence.size === 0 ? null : [...this.presence.values()].some(Boolean),
       notify: text => {
         // A connected page handles it: on screen it is seen, in a background tab it raises a
         // browser notification. Ring the OS only when no page is connected at all.
@@ -111,6 +114,12 @@ export class App {
       voice: { provider: voice.provider, ready: voiceReady(voice) },
       listen: { ready: listenReady(voice) },
     };
+  }
+
+  /** A spoken message: the transcript, nothing else. Sending stays the page's job. */
+  async hear(audio: Buffer, mime: string): Promise<string> {
+    const { text } = await createTranscriber(this.settings.voice).transcribe(audio, { mime });
+    return text;
   }
 
   /**

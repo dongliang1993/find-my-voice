@@ -21,6 +21,9 @@ export const api = {
     request<{ messageId: string; audioId: string | null; spoken: boolean }>('/api/onboarding/say', {
       method: 'POST', body: JSON.stringify({ text, speak }),
     }),
+  /** A spoken message in chat: transcript only, sent on over the socket afterwards. */
+  hear: (audio: Blob, mime: string) =>
+    request<{ text: string }>('/api/hear', { method: 'POST', body: audio, headers: { 'Content-Type': mime } }),
   /** The spoken answer to "what should I call you": what she heard, and the alias in it. */
   hearAlias: (audio: Blob, mime: string) =>
     request<HeardAlias>('/api/onboarding/hear-alias', { method: 'POST', body: audio, headers: { 'Content-Type': mime } }),

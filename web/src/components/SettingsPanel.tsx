@@ -168,8 +168,10 @@ function SettingsForm({ status, onSaved, pane }: { status: AppStatus; onSaved: (
         </TabsContent>
       </form>
 
+      {/* Its own band, inset from the scrolling pane so it never touches the edges. */}
       <Button type="submit" size="lg" disabled={saving}
-        className={cn('flex-none rounded-xl text-base', pane === 'drawer' && 'mx-4 mb-[calc(1.25rem+env(safe-area-inset-bottom))]')}
+        className={cn('mx-4 mb-4 flex-none rounded-xl text-base',
+          pane === 'drawer' && 'mb-[calc(1.25rem+env(safe-area-inset-bottom))]')}
         form="settings-form">
         {saving && <Loader2 className="animate-spin" />}
         {saving ? '保存中…' : '保存'}

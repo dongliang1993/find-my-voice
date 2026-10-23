@@ -28,6 +28,13 @@ export type InitiativeState = {
   dueFollowups: DueFollowup[];
   /** A reply is in progress. */
   busy: boolean;
+  /**
+   * Is anyone looking? `true` a page is open and visible, `false` a page is
+   * open but in the background, `null` no page at all — which is not the same
+   * thing, because then the OS notification is the delivery and she should
+   * still speak.
+   */
+  watching: boolean | null;
 };
 
 export type CandidateKind = 'followup' | 'morning' | 'miss_you';
@@ -45,6 +52,9 @@ const inWindow = (hour: number, start: number | null, end: number | null) =>
 
 function blocked(rules: InitiativeRules, s: InitiativeState) {
   if (!rules.enabled || s.busy) return true;
+  // A page in the background: the reply would be written and played to nobody,
+  // and the tab title is a poor place to catch up. Wait for the next tick.
+  if (s.watching === false) return true;
   // Never on a brand-new install: she has nothing to go on yet.
   if (!s.lastUserAt) return true;
   if (inWindow(s.now.getHours(), rules.quietStart, rules.quietEnd)) return true;

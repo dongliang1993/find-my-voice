@@ -42,6 +42,12 @@ type Props = {
    * place below, so who is talking is never in doubt.
    */
   listening?: boolean;
+  /**
+   * How much of the wave survives silence, 0..1. At 1 the coil keeps its full
+   * height when nobody is talking; lower it on a stage where silence is the
+   * normal state and a full wave reads as activity that is not happening.
+   */
+  rest?: number;
   className?: string;
 };
 
@@ -56,7 +62,7 @@ const smoothstep = (a: number, b: number, value: number) => {
  * above. Idle, it breathes and turns slowly; while she thinks it turns
  * faster; while she speaks it opens up and spins with her loudness.
  */
-export function Spiral({ thinking, stage = 'awake', tone, weight = 1 / 40, label = null, listening = false, className }: Props) {
+export function Spiral({ thinking, stage = 'awake', tone, weight = 1 / 40, label = null, listening = false, rest = 1, className }: Props) {
   const canvas = useRef<HTMLCanvasElement>(null);
   const busy = useRef(thinking);
   const stroke = useRef('#e2574c');
@@ -114,6 +120,8 @@ export function Spiral({ thinking, stage = 'awake', tone, weight = 1 / 40, label
       // Opens with her voice and settles slowly, like the glow.
       const level = voiceLevel.current;
       open += (level - open) * (level > open ? 0.3 : 0.05);
+      // Silence leaves a flat line where `rest` is low, and a full wave where it is 1.
+      const quiet = rest + (1 - rest) * Math.min(1, open * 4);
       // Listening, she holds still.
       phase += dt * (1 - hush) * (0.8 + (busy.current ? 2.2 : 0) + open * 7);
       const breath = still ? 1 : 1 + (0.05 + 0.05 * hush) * Math.sin(now / (1100 + 500 * hush));
@@ -160,7 +168,7 @@ export function Spiral({ thinking, stage = 'awake', tone, weight = 1 / 40, label
             const u = i / POINTS;
             const x = u * 2 - 1;
             // Tapered at both ends, fullest in the middle.
-            const r = coil * (0.22 - 0.1 * hush + open * (0.2 + 0.1 * hush)) * breath * Math.sin(Math.PI * u) ** 0.7;
+            const r = coil * (0.22 - 0.1 * hush + open * (0.2 + 0.1 * hush)) * quiet * breath * Math.sin(Math.PI * u) ** 0.7;
             const a = u * TURNS * Math.PI * 2 + phase + offset;
             const py = Math.sin(a) * r * cosT - Math.cos(a) * r * sinT;
             if (i === from) ctx.moveTo(size / 2 + x * half, size / 2 + py * half);
@@ -176,7 +184,7 @@ export function Spiral({ thinking, stage = 'awake', tone, weight = 1 / 40, label
     };
     frame = requestAnimationFrame(draw);
     return () => cancelAnimationFrame(frame);
-  }, [weight]);
+  }, [weight, rest]);
 
   return <canvas ref={canvas} aria-hidden="true" className={cn('spiral-glow flex-none', className)} />;
 }

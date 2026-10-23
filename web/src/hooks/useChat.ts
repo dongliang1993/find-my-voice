@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useReducer, useRef } from 'react';
 import type { ChatMessage, ClientEvent, CompanionStatus, ServerEvent } from '@shared/protocol';
+import { api } from '@/lib/api';
 import { audio } from '@/lib/audio';
 
 export type Connection = 'connecting' | 'open' | 'closed';
@@ -54,7 +55,7 @@ export function useChat() {
 
     const connect = () => {
       dispatch({ type: 'connection', connection: 'connecting' });
-      const ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/api/ws`);
+      const ws = new WebSocket(api.wsUrl());
       socket.current = ws;
       ws.onopen = () => {
         attempt = 0;

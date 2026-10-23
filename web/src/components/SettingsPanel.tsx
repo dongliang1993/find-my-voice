@@ -2,7 +2,7 @@ import { useEffect, useState, type SubmitEvent } from 'react';
 import { Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import type { AppStatus, BrainSource, PublicSettings } from '@shared/protocol';
-import { api } from '@/api';
+import { api } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Drawer, DrawerContent, DrawerDescription, DrawerHeader, DrawerTitle } from '@/components/ui/drawer';

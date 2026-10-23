@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Captions, Play, Square } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
 import type { ChatMessage } from '@shared/protocol';
+import { api } from '@/lib/api';
 import { audio } from '@/lib/audio';
 import { Button } from '@/components/ui/button';
 import { usePlaying } from '@/hooks/useVoice';
@@ -54,7 +55,7 @@ export function VoiceBubble({ message }: { message: ChatMessage }) {
   const toggle = async () => {
     if (active) { audio.stopAll(); return; }
     if (info.state !== 'ready') return;
-    try { setLoadError(false); await audio.playClip(info.id, `/api/audio/${info.id}`); }
+    try { setLoadError(false); await audio.playClip(info.id, api.audioUrl(info.id)); }
     catch { setLoadError(true); }
   };
 
@@ -70,11 +71,11 @@ export function VoiceBubble({ message }: { message: ChatMessage }) {
         aria-label={active ? '停止播放' : '播放语音'} whileTap={state === 'idle' || state === 'playing' ? { scale: 0.98 } : undefined}
         style={{ width: `calc(230px + ${len} * 170px)` }}
         className={cn(
-          'flex max-w-full items-center gap-3 rounded-md border bg-black py-2 pr-4 pl-2.5 text-primary transition-[border-color,box-shadow] duration-300',
+          'flex max-w-full items-center gap-3 rounded-md border bg-surface py-2 pr-4 pl-2.5 text-primary transition-[border-color,box-shadow] duration-300',
           'border-primary/25 enabled:hover:border-primary/50',
           state === 'playing' && 'voice-glow border-primary/70',
           state === 'failed' && 'border-destructive/40 text-destructive',
-          stopped && 'border-white/10 text-muted-foreground',
+          stopped && 'border-border text-muted-foreground',
         )}>
         <span className={cn('grid size-6 flex-none place-items-center rounded-full bg-primary text-primary-foreground',
           state === 'failed' && 'bg-destructive', stopped && 'bg-muted-foreground')}>
@@ -99,7 +100,7 @@ export function VoiceBubble({ message }: { message: ChatMessage }) {
       <div className="flex items-center gap-2">
         <span className="label-mono text-[10px] text-muted-foreground/60">{clock(message.createdAt)}</span>
         <Button type="button" variant="outline" size="xs" onClick={() => setShowText(v => !v)} aria-expanded={showText}
-          className="label-mono h-6 rounded-full border-white/12 bg-transparent px-2.5 text-[10px] text-subtle hover:bg-white/5 dark:bg-transparent">
+          className="label-mono h-6 rounded-full border-edge bg-transparent px-2.5 text-[10px] text-subtle hover:bg-wash dark:bg-transparent">
           <Captions className="size-3" />
           {showText ? 'Hide' : 'Transcript'}
         </Button>
@@ -109,7 +110,7 @@ export function VoiceBubble({ message }: { message: ChatMessage }) {
         {(showText || state === 'failed' || stopped) && (
           <motion.p initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }}
             transition={{ duration: 0.24, ease: [0.22, 1, 0.36, 1] }}
-            className="max-w-[460px] overflow-hidden border-l-2 border-primary/30 pl-3 text-[14px] leading-snug text-subtle">
+            className="max-w-[460px] overflow-hidden border-l-2 border-primary/30 pl-3 letter text-subtle">
             {message.text}
           </motion.p>
         )}

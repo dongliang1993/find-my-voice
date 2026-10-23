@@ -14,6 +14,7 @@ npx find-my-voice
 |---|---|---|
 | **大脑** | 她的思考与对话 | 已经在用 Claude Code 的话自动沿用其配置（API Key、网关、Bedrock/Vertex）。否则在设置里选服务商（Anthropic / DeepSeek / Kimi / 智谱）并粘贴 API Key |
 | **声音** | 她的语音 | 火山引擎「豆包语音合成大模型」、Fish Audio 或 ElevenLabs 的 API Key，在设置 → 声音里选一家填写 |
+| **听** | 你说话，她听见 | 用哪家说话就用哪家听：火山引擎需额外开通「录音文件识别极速版」，ElevenLabs 需 Key 带语音识别权限。都没有就只能打字 |
 
 需要 Node.js 22.13 或更高版本。
 

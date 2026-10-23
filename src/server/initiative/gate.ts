@@ -10,8 +10,9 @@ export type InitiativeRules = {
   dailyLimit: number;
   cooldownMinutes: number;
   missYouHours: number;
-  morningStart: number;
-  morningEnd: number;
+  /** Local hours; null means the morning window never matches. */
+  morningStart: number | null;
+  morningEnd: number | null;
 };
 
 export type DueFollowup = { id: string; topic: string; note: string };
@@ -39,8 +40,8 @@ const LIVE_CONVERSATION_MS = 30 * 60_000;
 export const localDay = (date: Date) =>
   `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 
-const inWindow = (hour: number, start: number, end: number) =>
-  start <= end ? hour >= start && hour < end : hour >= start || hour < end;
+const inWindow = (hour: number, start: number | null, end: number | null) =>
+  start === null || end === null ? false : start <= end ? hour >= start && hour < end : hour >= start || hour < end;
 
 function blocked(rules: InitiativeRules, s: InitiativeState) {
   if (!rules.enabled || s.busy) return true;

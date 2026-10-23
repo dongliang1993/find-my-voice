@@ -5,9 +5,18 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content" />
     <meta name="theme-color" content="#000000" />
     <title>Find My Voice</title>
+    <script>
+      // Same rules as src/lib/theme.ts, before first paint, so a cream page never flashes black.
+      try {
+        var t = localStorage.getItem('fmv-theme') === 'radio' ? 'radio' : 'her';
+        var d = t === 'radio' || matchMedia('(prefers-color-scheme: dark)').matches;
+        document.documentElement.dataset.theme = t;
+        if (d) document.documentElement.classList.add('dark');
+      } catch (e) {}
+    </script>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Doto:ROND,wght@0..100,100..900&family=Space+Grotesk:wght@400..600&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=Doto:ROND,wght@0..100,100..900&family=Space+Grotesk:wght@400..600&family=Space+Mono:wght@400;700&family=Fraunces:ital,opsz,wght,SOFT@0,9..144,300..600,0..100;1,9..144,300..600,0..100&family=Inter+Tight:wght@300..500&family=Noto+Serif+SC:wght@400;500&display=swap" rel="stylesheet" />
   </head>
   <body>
     <div id="root"></div>

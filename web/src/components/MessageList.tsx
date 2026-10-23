@@ -10,6 +10,12 @@ const EASE_OUT = [0.22, 1, 0.36, 1] as const;
 /** Shown next to her name when she spoke first. */
 const INITIATIVE_LABEL: Record<InitiativeKind, string> = { followup: 'Remembered', morning: 'Morning', miss_you: 'Missed you' };
 
+/** The empty screen speaks to the hour, not always to the night. */
+const greeting = () => {
+  const hour = new Date().getHours();
+  return hour < 5 ? '这么晚还没睡？' : hour < 11 ? '早上好，今天想聊点什么？' : hour < 18 ? '下午好，想聊点什么？' : '今晚想聊点什么？';
+};
+
 const clock = (iso: string) => new Date(iso).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false });
 const dayLabel = (iso: string) => {
   const date = new Date(iso);
@@ -47,7 +53,7 @@ export function MessageList({ messages, status, name }: Props) {
           <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, ease: EASE_OUT }}
             className="my-auto pb-[14vh] text-center">
             <p className="label-mono text-muted-foreground/70">— Channel open —</p>
-            <p className="mt-4 text-2xl font-medium text-foreground">今晚想聊点什么？</p>
+            <p className="mt-4 font-heading text-2xl font-medium text-foreground">{greeting()}</p>
             <p className="mt-2 text-sm text-muted-foreground">打字给{name || 'Ta'}，Ta 会回你。想听 Ta 的声音，就直接说。</p>
           </motion.div>
         )}
@@ -83,10 +89,10 @@ export function MessageList({ messages, status, name }: Props) {
                   )}
                   {message.kind === 'voice' ? <VoiceBubble message={message} /> : (
                     <p className={cn(
-                      'text-[14px] leading-snug wrap-anywhere whitespace-pre-wrap',
+                      'wrap-anywhere whitespace-pre-wrap',
                       user
-                        ? 'rounded-md px-3 py-2 border border-white/12 bg-secondary/70 text-foreground'
-                        : 'bg-black text-foreground',
+                        ? 'rounded-md border border-hairline bg-secondary/70 px-3 py-2 text-[14px] leading-snug text-foreground'
+                        : 'letter text-foreground',
                     )}>
                       {message.text || ' '}
                     </p>
@@ -105,7 +111,7 @@ export function MessageList({ messages, status, name }: Props) {
             <motion.div key="typing" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, transition: { duration: 0.15 } }}
               className="mt-5 flex gap-3">
               <Avatar name={name || '·'} className="size-9 text-[20px]" />
-              <p className="inline-flex items-center gap-1.5 rounded-md border border-white/8 bg-black px-4 py-3.5" aria-label={`${name}正在输入`}>
+              <p className="inline-flex items-center gap-1.5 rounded-md border border-border bg-surface px-4 py-3.5" aria-label={`${name}正在输入`}>
                 {[0, 1, 2].map(i => (
                   <motion.i key={i} className="size-1.5 rounded-full bg-primary"
                     animate={{ opacity: [0.2, 1, 0.2] }}

@@ -1,5 +1,5 @@
 import { resolve } from 'node:path';
-import { loadSettings, updateSettings, type Settings, type SettingsPatch } from './config.js';
+import { loadSettings, resolveInitiative, updateSettings, type Settings, type SettingsPatch } from './config.js';
 import { readClaudeSettings, resolveBrainAuth } from './brain/auth.js';
 import { ClaudeBrain } from './brain/claude.js';
 import type { Brain } from './brain/types.js';
@@ -9,12 +9,15 @@ import { InitiativeScheduler } from './initiative/scheduler.js';
 import { notifySystem } from './initiative/notify.js';
 import { extractWithClaude } from './memory/claude.js';
 import { MemoryExtractor } from './memory/extractor.js';
-import { buildSystemPrompt, personaVersion } from './profile/profile.js';
+import { extractAliasWithClaude, plainAlias } from './profile/alias.js';
+import { acceptable } from './profile/naming.js';
+import { proposeNameWithClaude } from './profile/propose.js';
+import { buildSystemPrompt, personaVersion, readProfileDocument, writeProfileDocument } from './profile/profile.js';
 import { VoicePipeline } from './voice/pipeline.js';
 import type { TtsProvider } from './voice/provider.js';
-import { activeVoice, createTtsProvider, voiceReady } from './voice/registry.js';
+import { activeVoice, createTranscriber, createTtsProvider, listenReady, voiceReady } from './voice/registry.js';
 import { DomainError } from './errors.js';
-import type { AppStatus } from '../shared/protocol.js';
+import type { AppStatus, Comfort, HeardAlias, Rhythm } from '../shared/protocol.js';
 
 const SESSION_KEY = 'brain_session';
 
@@ -45,13 +48,14 @@ export class App {
         const voice = this.settings.voice;
         return voice.provider === 'elevenlabs' ? voice.elevenlabs.language
           : voice.provider === 'volcengine' ? voice.volcengine.language
-          : 'auto';
+            : 'auto';
       },
     });
     this.chat = new ChatService({
       store: this.store, voice: this.voice, onLog: log,
       createBrain: ({ fresh }) => this.createBrain(fresh),
-      promptVersion: () => personaVersion(this.dataDir, this.settings.companion.name, new Date()),
+      promptVersion: () => personaVersion(this.dataDir,
+        { companionName: this.settings.companion.name, userName: this.settings.companion.userName }, new Date()),
     });
     this.memory = new MemoryExtractor({
       store: this.store, dataDir,
@@ -63,7 +67,8 @@ export class App {
     });
     this.initiative = new InitiativeScheduler({
       store: this.store, chat: this.chat, memory: this.memory, onLog: line => this.log(`[initiative] ${line}`),
-      rules: () => this.settings.initiative,
+      // The gate stays a pure consumer of knobs; the mode→knobs mapping lives in config.
+      rules: () => resolveInitiative(this.settings.initiative, this.settings.companion.rhythm),
       notify: text => {
         // A connected page handles it: on screen it is seen, in a background tab it raises a
         // browser notification. Ring the OS only when no page is connected at all.
@@ -86,7 +91,10 @@ export class App {
     }
     return new ClaudeBrain({
       auth, dataDir: this.dataDir,
-      systemPrompt: buildSystemPrompt(this.dataDir, { companionName: this.settings.companion.name, now: new Date() }),
+      systemPrompt: buildSystemPrompt(this.dataDir, {
+        companionName: this.settings.companion.name, userName: this.settings.companion.userName,
+        comfort: this.settings.companion.comfort, now: new Date(),
+      }),
       // A fresh brain forgets the stored id so a lost session is never resumed again.
       resumeSessionId: fresh ? null : this.store.getState(SESSION_KEY),
       onSessionId: id => this.store.setState(SESSION_KEY, id),
@@ -101,7 +109,106 @@ export class App {
       companionName: companion.name,
       brain: { source: auth.source, ready: auth.source !== 'none', model: auth.model ?? null },
       voice: { provider: voice.provider, ready: voiceReady(voice) },
+      listen: { ready: listenReady(voice) },
     };
+  }
+
+  /**
+   * The user answered "what should I call you" aloud. Transcribes the clip and
+   * takes the alias out of it. Nothing is saved here: the page shows what she
+   * heard and the user confirms it, the same as a typed answer.
+   */
+  async hearAlias(audio: Buffer, mime: string): Promise<HeardAlias> {
+    if (this.store.onboarding().completedAt) throw new DomainError('ONBOARDING_DONE', '引导已经结束了。', 409);
+    const { text } = await createTranscriber(this.settings.voice).transcribe(audio, { mime });
+    if (!text) return { said: '', alias: null };
+    const bare = plainAlias(text);
+    if (bare) return { said: text, alias: bare };
+    const auth = this.brainAuth();
+    if (auth.source === 'none') return { said: text, alias: null };
+    const alias = await extractAliasWithClaude(auth, this.dataDir, text, line => this.log(`[alias] ${line.trimEnd()}`))
+      .catch(error => { this.log(`[alias] failed: ${(error as Error).message}`); return null; });
+    return { said: text, alias };
+  }
+
+  /** Onboarding progress: the step, the saved draft, and whether it is over. */
+  onboarding() {
+    return this.store.onboarding();
+  }
+
+  /** Saves onboarding progress; each step lands as it is reached. */
+  saveOnboarding(step: number, draft: Record<string, unknown>, completed: boolean) {
+    this.store.saveOnboarding(step, draft, completed);
+  }
+
+  /**
+   * A scripted onboarding line. Voice lines need a configured voice; without
+   * one the line is text, so onboarding degrades instead of erroring out.
+   */
+  narrate(text: string, { speak = false }: { speak?: boolean } = {}) {
+    const canSpeak = speak && voiceReady(this.settings.voice);
+    return this.chat.narrate(text, { speak: canSpeak });
+  }
+
+  /** Resolves when a narrated voice line finished (played, failed or stopped). */
+  narrateDone(messageId: string) {
+    return this.chat.narrateDone(messageId);
+  }
+
+  /**
+   * One name proposal — exactly one. She proposes once; whatever the user
+   * thinks of it, the next move is the user's own input, never a re-roll.
+   */
+  async proposeName(userAlias: string, notes: string): Promise<{ name: string; reason: string } | null> {
+    const state = this.store.onboarding();
+    if (state.completedAt) return null;
+    if (state.draft.nameProposed) return null;
+
+    const auth = this.brainAuth();
+    if (auth.source === 'none') throw new DomainError('BRAIN_NOT_CONFIGURED', '还没有可用的模型凭证。');
+    const proposal = await proposeNameWithClaude(auth, this.dataDir, userAlias, notes,
+      line => this.log(`[naming] ${line.trimEnd()}`));
+    this.store.saveOnboarding(state.step, { ...state.draft, nameProposed: true }, false);
+    const name = acceptable(proposal);
+    if (!name) return null;
+    return { name, reason: proposal.reason };
+  }
+
+  /**
+   * The last step, all at once: the names land where the rest of the app
+   * already reads them, the first pages of IDENTITY.md and MEMORY.md open
+   * with the story of the first meeting, and onboarding closes for good.
+   * Every part is idempotent; a crash midway replays the remaining writes.
+   */
+  async finishOnboarding(final: {
+    alias: string; companionName: string; nameOrigin: string; notes: string;
+    comfort: Comfort; rhythm: Rhythm;
+  }): Promise<void> {
+    const state = this.store.onboarding();
+    if (state.completedAt) return;
+
+    // Everything the first meeting learned lands in one write, so the gate and
+    // the prompt never see a half-finished choice.
+    this.settings = updateSettings(this.dataDir, {
+      companion: { name: final.companionName, userName: final.alias, comfort: final.comfort, rhythm: final.rhythm },
+    });
+    this.tts = createTtsProvider(this.settings.voice);
+
+    // Her first page: who she is, including where her own name came from.
+    // A file that already exists wins outright — onboarding never touches it,
+    // hand-written or from an earlier run.
+    const identity = readProfileDocument(this.dataDir, 'identity');
+    if (identity.content === null) {
+      const identityFirst = `# 我是谁\n${final.nameOrigin}\n\n# 我们怎么认识\n${new Date().toLocaleDateString('sv-SE')} 第一次见面，${final.notes ? `她第一天跟我说的是：${final.notes}` : '她第一天还没说多少话。'}`;
+      try { writeProfileDocument(this.dataDir, 'identity', identityFirst, null); }
+      catch (error) { if (!(error instanceof DomainError)) throw error; }
+    } else {
+      this.log('[onboarding] identity file exists; keeping it');
+    }
+
+    this.store.saveOnboarding(7, state.draft, true);
+    // The next message starts a fresh brain with the new names in the prompt.
+    await this.chat.resetBrain();
   }
 
   async updateSettings(patch: SettingsPatch) {

@@ -34,11 +34,13 @@ export async function extractWithClaude(auth: BrainAuth, dataDir: string, prompt
       stderr: line => onLog?.(line),
     },
   });
+
   for await (const message of session) {
     if (message.type !== 'result') continue;
     if (message.subtype !== 'success') throw new Error(`memory extraction ended: ${message.subtype}`);
     if (message.structured_output === undefined) throw new Error('memory extraction returned no structured output');
     return extractionSchema.parse(message.structured_output);
   }
+
   throw new Error('memory extraction produced no result');
 }

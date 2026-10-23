@@ -25,9 +25,12 @@ function listen(app: App, port: number) {
 }
 
 const app = new App(defaultDataDir());
-const server = listen(app, app.settings.server.port);
+// The desktop shell finds a free port itself and passes it here; standalone
+// runs keep using the configured one.
+const port = Number(process.env.FMV_PORT) || app.settings.server.port;
+const server = listen(app, port);
 server.on('error', (error: NodeJS.ErrnoException) => {
-  if (error.code === 'EADDRINUSE') process.stderr.write(`端口 ${app.settings.server.port} 已被占用。可能已经有一个 find-my-voice 在运行，或在 ~/.find-my-voice/config.json 修改端口。\n`);
+  if (error.code === 'EADDRINUSE') process.stderr.write(`端口 ${port} 已被占用。可能已经有一个 find-my-voice 在运行，或在 ~/.find-my-voice/config.json 修改端口。\n`);
   else process.stderr.write(`${error.message}\n`);
   process.exit(1);
 });

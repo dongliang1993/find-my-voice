@@ -6,6 +6,9 @@ export function usePlaying() {
   return useSyncExternalStore(cb => audio.subscribe(cb), () => audio.playing);
 }
 
+/** Her smoothed loudness (0..1), for canvas drawing that cannot read CSS cheaply. */
+export const voiceLevel = { current: 0 };
+
 /**
  * Writes her live loudness into a CSS variable on <html> every frame, so the
  * whole page can breathe with her voice without React re-rendering.
@@ -19,6 +22,7 @@ export function useVoiceGlow() {
       // Fast attack, slow release: reads as breath rather than flicker.
       const target = audio.level();
       level.current += (target - level.current) * (target > level.current ? 0.5 : 0.08);
+      voiceLevel.current = level.current;
       root.style.setProperty('--voice', level.current.toFixed(3));
       frame = requestAnimationFrame(tick);
     };

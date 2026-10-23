@@ -9,3 +9,5 @@ data/
 test-results/
 playwright-report/
 *.log
+src-tauri/target/
+src-tauri/gen/schemas/

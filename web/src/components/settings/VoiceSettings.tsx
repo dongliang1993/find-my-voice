@@ -122,11 +122,11 @@ export function VoiceSettings({ draft, settings, onChange }: Props) {
             onClick={() => onChange({ ...draft, provider: p.id })}
             className={cn(
               'flex flex-col items-start gap-1 rounded-md border px-3 py-2.5 text-left transition-colors',
-              draft.provider === p.id ? 'border-primary/60 bg-primary/5' : 'border-border hover:bg-white/3',
+              draft.provider === p.id ? 'border-primary/60 bg-primary/5' : 'border-border hover:bg-wash',
             )}>
             <span className={cn('text-sm font-medium', draft.provider === p.id ? 'text-primary' : 'text-foreground')}>{p.label}</span>
             <span className="label-mono flex items-center gap-1.5 text-[10px] text-muted-foreground">
-              <span className={cn('size-1.5 rounded-full', active === p.id ? 'bg-primary' : saved(p.id) ? 'bg-muted-foreground' : 'bg-white/15')} />
+              <span className={cn('size-1.5 rounded-full', active === p.id ? 'bg-primary' : saved(p.id) ? 'bg-muted-foreground' : 'bg-wash-strong')} />
               {active === p.id ? 'In use' : saved(p.id) ? 'Key saved' : 'Not set'}
             </span>
           </button>

@@ -91,9 +91,12 @@ class AudioEngine {
 
   isStreaming(audioId: string) { return Boolean(this.streams.get(audioId)?.sources.length); }
 
-  async playClip(id: string, url: string) {
+  /** Starts an archived clip. `ended` settles when it finishes or is stopped. */
+  async playClip(id: string, url: string): Promise<{ ended: Promise<void> }> {
     const ctx = this.context();
-    if (ctx.state === 'suspended') await ctx.resume();
+    // Without a user gesture resume() never settles; give up instead of waiting forever.
+    if (ctx.state === 'suspended') await Promise.race([ctx.resume(), new Promise(resolve => setTimeout(resolve, 400))]);
+    if (ctx.state !== 'running') throw new Error('audio locked');
     this.stopAll();
     const response = await fetch(url);
     if (!response.ok) throw new Error(`audio ${response.status}`);
@@ -101,12 +104,16 @@ class AudioEngine {
     const source = ctx.createBufferSource();
     source.buffer = buffer;
     source.connect(this.analyser!);
+    const ended = new Promise<void>(resolve => {
+      source.onended = () => {
+        if (this.clip?.source === source) { this.clip = null; this.setPlaying(null); }
+        resolve();
+      };
+    });
     source.start();
     this.clip = { id, source, startedAt: ctx.currentTime, duration: buffer.duration };
-    source.onended = () => {
-      if (this.clip?.source === source) { this.clip = null; this.setPlaying(null); }
-    };
     this.setPlaying(id);
+    return { ended };
   }
 
   /** 0..1 progress of the replayed clip, or null. */

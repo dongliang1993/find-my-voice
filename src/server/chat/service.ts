@@ -134,6 +134,28 @@ export class ChatService {
     });
   }
 
+  /**
+   * A scripted line during onboarding: fixed text, no model in the loop. It
+   * enters the history the same way any other message does — so a later
+   * "she remembers" has something to remember — and when spoken, it resolves
+   * only after the audio finished, which is what paces the onboarding steps.
+   * Returns the message id and, for spoken lines, the audio id to wait on.
+   */
+  narrate(text: string, { speak = false, emotion = null }: { speak?: boolean; emotion?: string | null } = {}): { messageId: string; audioId: string | null } {
+    if (!speak) {
+      return { messageId: this.publish(this.options.store.append({ role: 'assistant', kind: 'text', text })).id, audioId: null };
+    }
+    // startVoice keys its job by the audio id, not the message id.
+    const audioId = randomUUID();
+    const messageId = this.startVoice(text, emotion, null, audioId);
+    return { messageId, audioId };
+  }
+
+  /** Resolves when a narrated voice line finished playing, failing or not. */
+  async narrateDone(audioId: string): Promise<void> {
+    await this.voiceJobs.get(audioId)?.done;
+  }
+
   private start() {
     if (!this.loop) this.loop = this.drain().finally(() => { this.loop = null; });
     return this.loop;
@@ -252,9 +274,8 @@ export class ChatService {
     return ids;
   }
 
-  private startVoice(text: string, emotion: string | null, initiative: InitiativeKind | null): string {
+  private startVoice(text: string, emotion: string | null, initiative: InitiativeKind | null, audioId = randomUUID()): string {
     const { store, voice } = this.options;
-    const audioId = randomUUID();
     const audio = (patch: Partial<AudioInfo>): AudioInfo => ({ id: audioId, state: 'streaming', durationSeconds: null, error: null, ...patch });
     const message = this.publish(store.append({ role: 'assistant', kind: 'voice', text, emotion, audio: audio({}), initiative }));
     const controller = new AbortController();

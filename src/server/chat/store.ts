@@ -23,7 +23,10 @@ const toMessage = (row: Row): ChatMessage => ({
 /** The single conversation with the companion, things she means to follow up on, and small key/value state. */
 export class ChatStore {
   private db: DatabaseSync;
-  constructor(dataDir: string) {
+  /** Injection point for tests: the timestamp on stored rows. The real clock is never faked. */
+  private clock: () => Date = () => new Date();
+  constructor(dataDir: string, clock?: () => Date) {
+    if (clock) this.clock = clock;
     mkdirSync(dataDir, { recursive: true, mode: 0o700 });
     this.db = new DatabaseSync(resolve(dataDir, 'chat.sqlite'));
     this.db.exec(`
@@ -36,8 +39,14 @@ export class ChatStore {
         id TEXT PRIMARY KEY, topic TEXT NOT NULL, note TEXT NOT NULL, due_at TEXT NOT NULL,
         due_day TEXT NOT NULL, done_at TEXT, created_at TEXT NOT NULL,
         UNIQUE (topic, due_day));
+      CREATE TABLE IF NOT EXISTS onboarding_state (
+        id INTEGER PRIMARY KEY CHECK (id = 1),
+        step INTEGER NOT NULL DEFAULT 0,
+        draft_json TEXT NOT NULL DEFAULT '{}',
+        completed_at TEXT);
     `);
     this.migrate();
+    this.skipOnboardingForExistingUsers();
     this.failInterruptedAudio();
   }
 
@@ -45,6 +54,36 @@ export class ChatStore {
   private migrate() {
     const columns = this.db.prepare('PRAGMA table_info(messages)').all() as { name: string }[];
     if (!columns.some(c => c.name === 'initiative')) this.db.exec('ALTER TABLE messages ADD COLUMN initiative TEXT');
+  }
+
+  /**
+   * Installs from before onboarding already have a companion they talk to;
+   * walking them through setup again would answer a question nobody asked.
+   * One row written once, on the first open after the upgrade — never read
+   * again as a "does this user count as existing" check.
+   */
+  private skipOnboardingForExistingUsers() {
+    const row = this.db.prepare('SELECT step, completed_at FROM onboarding_state WHERE id = 1').get() as { step: number; completed_at: string | null } | undefined;
+    if (row) return;
+    const existing = this.db.prepare('SELECT COUNT(*) AS n FROM messages').get() as { n: number };
+    if (existing.n === 0) return;
+    this.db.prepare('INSERT INTO onboarding_state (id, step, draft_json, completed_at) VALUES (1, 7, ?, ?)')
+      .run('{}', this.clock().toISOString());
+  }
+
+  /** The onboarding row: step, saved draft and completion. Never null. */
+  onboarding(): { step: number; draft: Record<string, unknown>; completedAt: string | null } {
+    const row = this.db.prepare('SELECT step, draft_json, completed_at FROM onboarding_state WHERE id = 1').get() as { step: number; draft_json: string; completed_at: string | null } | undefined;
+    const draft = (() => { try { return JSON.parse(row?.draft_json ?? '{}') as Record<string, unknown>; } catch { return {}; } })();
+    return { step: row?.step ?? 0, draft, completedAt: row?.completed_at ?? null };
+  }
+
+  /** Saves onboarding progress; each step is written as it is reached. */
+  saveOnboarding(step: number, draft: Record<string, unknown>, completed: boolean) {
+    const completedAt = completed ? (this.onboarding().completedAt ?? this.clock().toISOString()) : null;
+    this.db.prepare(`INSERT INTO onboarding_state (id, step, draft_json, completed_at) VALUES (1, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET step = excluded.step, draft_json = excluded.draft_json, completed_at = excluded.completed_at`)
+      .run(step, JSON.stringify(draft), completedAt);
   }
 
   // Audio that was still streaming when the process died can never complete.
@@ -59,7 +98,7 @@ export class ChatStore {
   append(input: NewMessage): ChatMessage {
     const message: ChatMessage = {
       id: randomUUID(), role: input.role, kind: input.kind, text: input.text,
-      emotion: input.emotion ?? null, audio: input.audio ?? null, createdAt: new Date().toISOString(),
+      emotion: input.emotion ?? null, audio: input.audio ?? null, createdAt: this.clock().toISOString(),
       initiative: input.initiative ?? null,
     };
     this.db.prepare('INSERT INTO messages (id, role, kind, text, emotion, audio, created_at, initiative) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')

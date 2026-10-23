@@ -2,15 +2,22 @@
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 
-/* Radio console. shadcn/ui nova tokens on a pure-black panel with an indigo
-   glow and a dot grid. Mint is the only colour, reserved for live states.
+/* Two themes over one set of semantic tokens, chosen by data-theme on <html>
+   (see lib/theme.ts). Components never name a colour, only a role.
+   `radio`: night console. Pure black, indigo glow, dot grid, mint only for live states.
+   `her`:   OS1. Cream and coral in afternoon light; wood and amber lamplight when
+            the system is dark. Her words are set like a letter.
    --voice (0..1) is written every frame from her live loudness. */
 
+@custom-variant dark (&:where(.dark, .dark *));
+
 @theme inline {
-  --font-sans: 'Space Grotesk', 'PingFang SC', 'Noto Sans SC', 'Microsoft YaHei', sans-serif;
-  --font-mono: 'Space Mono', 'PingFang SC', 'Noto Sans SC', ui-monospace, monospace;
-  --font-heading: var(--font-mono);
-  --font-dot: 'Doto', var(--font-mono);
+  --font-sans: var(--theme-sans);
+  --font-mono: var(--theme-mono);
+  --font-heading: var(--theme-heading);
+  --font-letter: var(--theme-letter);
+  --font-input: var(--theme-input);
+  --font-dot: 'Doto', var(--theme-mono);
 
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -31,9 +38,14 @@
   --color-input: var(--input);
   --color-ring: var(--ring);
 
-  /* Console extras */
+  /* Roles beyond shadcn's */
   --color-subtle: var(--subtle);
-  --color-mint-deep: var(--mint-deep);
+  --color-surface: var(--surface);
+  --color-backdrop: var(--backdrop);
+  --color-hairline: var(--hairline);
+  --color-edge: var(--edge);
+  --color-wash: var(--wash);
+  --color-wash-strong: var(--wash-strong);
 
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
@@ -44,10 +56,21 @@
   --radius-4xl: calc(var(--radius) * 2.6);
 }
 
-:root {
+/* ---- radio (default) ---- */
+:root, [data-theme='radio'] {
   color-scheme: dark;
   --voice: 0;
 
+  --theme-sans: 'Space Grotesk', 'PingFang SC', 'Noto Sans SC', 'Microsoft YaHei', sans-serif;
+  --theme-mono: 'Space Mono', 'PingFang SC', 'Noto Sans SC', ui-monospace, monospace;
+  --theme-heading: var(--theme-mono);
+  --theme-letter: var(--theme-sans);
+  --theme-input: var(--theme-mono);
+  --letter-size: 14px;
+  --letter-leading: 1.375;
+
+  --outside: #000000;
+  --page: #000000;
   --background: #000000;
   --foreground: #fcfcfc;
   --card: #0e0e10;
@@ -69,33 +92,174 @@
   --radius: 0.5rem;
 
   --subtle: #bababa;
-  --mint-deep: #18ac9b;
-  --glow: #2a2c4a;
-  --mint-glow: rgb(92 255 199 / 0.35);
+  --surface: #000000;
+  --backdrop: #000000;
+  --hairline: rgb(255 255 255 / 0.13);
+  --edge: rgb(255 255 255 / 0.25);
+  --wash: rgb(255 255 255 / 0.05);
+  --wash-strong: rgb(255 255 255 / 0.15);
+  --halo: rgb(92 255 199 / 0.35);
+  --panel-shadow: 0 0 90px -10px rgb(70 70 160 / 0.35);
+  --avatar-bg: radial-gradient(circle at 35% 30%, #4a4e86, #16172e);
+  --avatar-ink: rgb(255 255 255 / 0.9);
+  --spiral: #5cffc7;
   --grid-dot: rgb(150 156 255 / 0.13);
+  --grain-opacity: 0;
+}
+
+/* ---- OS1 card (onboarding + loading gate), desktop only ----
+   Card height = panel + mat. Tune live: DevTools → <html> → Styles, edit these.
+   The mat is one height for every step, sized for the tallest (the three
+   "how often" cards with their button), so the line between coral and cream
+   never moves from one answer to the next. */
+:root {
+  --os1-panel-h: min(440px, 50dvh);
+  --os1-mat-h: min(240px, 26dvh);
+}
+
+/* ---- her, afternoon ---- */
+[data-theme='her'] {
+  color-scheme: light;
+
+  --theme-sans: 'Inter Tight', 'PingFang SC', 'Noto Sans SC', 'Microsoft YaHei', sans-serif;
+  --theme-mono: var(--theme-sans);
+  --theme-heading: 'Fraunces', 'Noto Serif SC', 'Songti SC', serif;
+  --theme-letter: 'Fraunces', 'Noto Serif SC', 'Songti SC', serif;
+  --theme-input: var(--theme-sans);
+  --letter-size: 15.5px;
+  --letter-leading: 1.72;
+
+  --outside: #eadbcd;
+  --page: #f6ede4;
+  --background: #f6ede4;
+  --foreground: #3b2925;
+  --card: #fbf6f1;
+  --card-foreground: #3b2925;
+  --popover: #fbf6f1;
+  --popover-foreground: #3b2925;
+  /* Deep enough for text on cream (AA); the brighter OS1 coral is --spiral. */
+  --primary: #b03a30;
+  --primary-foreground: #fff8f3;
+  --secondary: #eedfd3;
+  --secondary-foreground: #3b2925;
+  --muted: #efe4da;
+  --muted-foreground: #7a5e55;
+  --accent: rgb(176 58 48 / 0.08);
+  --accent-foreground: #b03a30;
+  --destructive: #8a2b4a;
+  --border: rgb(59 41 37 / 0.11);
+  --input: rgb(59 41 37 / 0.2);
+  --ring: rgb(176 58 48 / 0.45);
+  --radius: 0.875rem;
+
+  --subtle: #5e4840;
+  --surface: #fbf6f1;
+  --backdrop: transparent;
+  --hairline: rgb(59 41 37 / 0.14);
+  --edge: rgb(59 41 37 / 0.22);
+  --wash: rgb(59 41 37 / 0.045);
+  --wash-strong: rgb(59 41 37 / 0.1);
+  --halo: rgb(226 87 76 / 0.32);
+  --panel-shadow: 0 40px 90px -40px rgb(140 70 45 / 0.4);
+  --avatar-bg: radial-gradient(circle at 35% 30%, #f29a83, #c4443a);
+  --avatar-ink: #fff8f3;
+  --spiral: #e2574c;
+  --grain-opacity: 0.11;
+  /* The OS1 panel. White on it only at 24px and up (3.9:1, AA large). */
+  --os1: #d44b3e;
+  --os1-ink: #fffaf5;
+  /* The answer mat: fields a shade lighter than the mat, edged warm brown (3.5:1 to the mat). */
+  --field: #fffcf8;
+  --field-edge: #9c7d70;
+}
+
+/* ---- her, lamplight ---- */
+[data-theme='her'].dark {
+  color-scheme: dark;
+
+  --outside: #120c0a;
+  --page: #1c1412;
+  --background: #1c1412;
+  --foreground: #f2e4d8;
+  --card: #281c19;
+  --card-foreground: #f2e4d8;
+  --popover: #241915;
+  --popover-foreground: #f2e4d8;
+  --primary: #f07b63;
+  --primary-foreground: #2a0f0a;
+  --secondary: #33241f;
+  --secondary-foreground: #f2e4d8;
+  --muted: #2a1e1a;
+  --muted-foreground: #b59c8f;
+  --accent: rgb(240 123 99 / 0.12);
+  --accent-foreground: #f07b63;
+  --destructive: #ff8fa3;
+  --border: rgb(242 228 216 / 0.1);
+  --input: rgb(242 228 216 / 0.18);
+  --ring: rgb(240 123 99 / 0.5);
+
+  --subtle: #d9c4b6;
+  --surface: #241915;
+  --hairline: rgb(242 228 216 / 0.14);
+  --edge: rgb(242 228 216 / 0.22);
+  --wash: rgb(242 228 216 / 0.05);
+  --wash-strong: rgb(242 228 216 / 0.13);
+  --halo: rgb(240 123 99 / 0.4);
+  --panel-shadow: 0 0 100px -20px rgb(214 120 60 / 0.28);
+  --avatar-bg: radial-gradient(circle at 35% 30%, #f5937a, #a8372d);
+  --avatar-ink: #fff3ea;
+  --spiral: #f07b63;
+  --grain-opacity: 0.07;
+  --os1: #b9443a;
+  --os1-ink: #fff3ea;
+  --field: #2f221e;
+  --field-edge: #8a7266;
 }
 
 @layer base {
   * { @apply border-border outline-ring/50; }
   html, body, #root { @apply h-full; }
-  body { @apply bg-background font-sans text-foreground antialiased overflow-hidden; }
+  body { @apply font-sans text-foreground antialiased overflow-hidden; background: var(--outside); }
 }
 
 @layer components {
-  /* The console panel: dot grid over black, framed on wide screens. */
-  .console {
-    background-color: var(--background);
+  /* The panel. Radio lays a dot grid over black; Her is plain paper (grain is its own layer). */
+  .console { background-color: var(--page); }
+  [data-theme='radio'] .console, :root:not([data-theme]) .console {
     background-image: radial-gradient(circle, var(--grid-dot) 1px, transparent 1.4px);
     background-size: 12px 12px;
     background-position: 6px 6px;
   }
-  /* Indigo light from the top of the panel; brightens and gains a mint core while she speaks. */
+
+  /* Light from the top of the panel; it warms while she speaks. */
   .glow {
     background:
       radial-gradient(40% 30% at 50% 0%, rgb(92 255 199 / calc(var(--voice) * 0.14)), transparent 70%),
       radial-gradient(80% 60% at 50% 0%, rgb(58 62 120 / calc(0.75 + var(--voice) * 0.25)), transparent 72%),
       linear-gradient(180deg, rgb(42 44 74 / 0.55), transparent 45%);
   }
+  /* Afternoon sun low through a window, top left; a coral bloom answers her voice. */
+  [data-theme='her'] .glow {
+    background:
+      radial-gradient(55% 45% at 85% 4%, rgb(226 87 76 / calc(0.06 + var(--voice) * 0.22)), transparent 70%),
+      radial-gradient(75% 60% at 8% 0%, rgb(255 190 140 / 0.55), transparent 70%),
+      linear-gradient(180deg, rgb(255 226 200 / 0.6), transparent 55%);
+  }
+  /* A lamp just above the frame. */
+  [data-theme='her'].dark .glow {
+    background:
+      radial-gradient(45% 35% at 50% 0%, rgb(240 123 99 / calc(0.05 + var(--voice) * 0.2)), transparent 70%),
+      radial-gradient(85% 60% at 50% 0%, rgb(214 128 64 / 0.3), transparent 72%),
+      linear-gradient(180deg, rgb(90 50 30 / 0.35), transparent 50%);
+  }
+
+  /* Film grain. A static tile, so it costs one paint. */
+  .grain {
+    opacity: var(--grain-opacity);
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .23 0 0 0 0 .14 0 0 0 0 .1 0 0 0 1 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    mix-blend-mode: multiply;
+  }
+  .dark .grain { mix-blend-mode: screen; }
 
   /* Dot-matrix wordmark. Doto covers Latin; CJK names fall back to a dot mask below. */
   .dot-name {
@@ -116,17 +280,39 @@
     -webkit-text-fill-color: transparent;
     filter: drop-shadow(0 0 7px rgb(255 255 255 / 0.18));
   }
+  /* Her name, written by hand rather than printed. CJK stays upright: no fake italics. */
+  .letter-name {
+    font-family: var(--font-heading);
+    font-style: italic;
+    font-weight: 340;
+    font-variation-settings: 'SOFT' 100, 'opsz' 96;
+    font-synthesis: none;
+    letter-spacing: -0.015em;
+  }
 
-  /* Small-caps console labels: QUEUE, LIVE, CONNECTED… */
+  /* Small console labels: QUEUE, LIVE, CONNECTED… Her speaks in lowercase. */
   .label-mono {
     font-family: var(--font-mono);
     font-size: 11px;
     letter-spacing: 0.14em;
     text-transform: uppercase;
   }
+  [data-theme='her'] .label-mono {
+    font-size: 12px;
+    letter-spacing: 0.02em;
+    text-transform: lowercase;
+  }
 
-  .voice-ring { box-shadow: 0 0 0 2px var(--primary), 0 0 calc(8px + var(--voice) * 28px) calc(var(--voice) * 6px) var(--mint-glow); }
-  .voice-glow { box-shadow: 0 0 calc(14px + var(--voice) * 34px) 0 var(--mint-glow); }
+  /* What she writes. Radio prints it; Her sets it like a letter. */
+  .letter {
+    font-family: var(--font-letter);
+    font-size: var(--letter-size);
+    line-height: var(--letter-leading);
+  }
+
+  .voice-ring { box-shadow: 0 0 0 2px var(--primary), 0 0 calc(8px + var(--voice) * 28px) calc(var(--voice) * 6px) var(--halo); }
+  .voice-glow { box-shadow: 0 0 calc(14px + var(--voice) * 34px) 0 var(--halo); }
+  .spiral-glow { filter: drop-shadow(0 0 calc(var(--voice) * 16px) var(--halo)); }
   /* While she speaks, bars ride her live level, each slightly out of phase. */
   .voice-bar-live { scale: 1 calc(0.55 + var(--voice) * 0.9 * (0.6 + 0.4 * sin(var(--i) * 1.7))); }
 }

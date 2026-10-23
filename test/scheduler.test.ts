@@ -15,8 +15,11 @@ const rules: InitiativeRules = {
 };
 
 function setup({ outcome = 'spoke' as SpeakUpOutcome, busy = false, extract = async (): Promise<unknown> => 'nothing_new' } = {}) {
-  const store = new ChatStore(mkdtempSync(join(tmpdir(), 'fmv-sched-')));
+  // The store shares the scheduler's fake clock, so a test's "later" is later
+  // than its own rows; with the real clock, every test after ~17:00 local
+  // saw rows stamped in the "future" and silently turned into no-ops.
   let now = new Date(2026, 9, 22, 15, 0);
+  const store = new ChatStore(mkdtempSync(join(tmpdir(), 'fmv-sched-')), () => now);
   const asked: SpeakUpRequest[] = [];
   const notified: string[] = [];
   let extractions = 0;
@@ -38,8 +41,8 @@ const MIN = 60_000;
 test('leaves a live conversation alone even with a follow-up due', async () => {
   const s = setup({ outcome: 'spoke' });
   s.store.append({ role: 'user', kind: 'text', text: '后天面试' });
-  s.store.addFollowup({ topic: '面试', note: '', dueAt: new Date(Date.now() - MIN) });
-  s.setNow(new Date(Date.now() + 5 * MIN));
+  s.store.addFollowup({ topic: '面试', note: '', dueAt: new Date(0) });
+  s.advance(5 * MIN);
   await s.scheduler.tick();
   assert.equal(s.asked.length, 0, 'the user spoke five minutes ago');
 });
@@ -47,8 +50,8 @@ test('leaves a live conversation alone even with a follow-up due', async () => {
 test('speaks up for a due follow-up after a quiet spell, and does not repeat it', async () => {
   const s = setup({ outcome: 'passed' });
   s.store.append({ role: 'user', kind: 'text', text: '后天面试' });
-  s.store.addFollowup({ topic: '面试', note: '紧张', dueAt: new Date(Date.now() - MIN) });
-  s.setNow(new Date(Date.now() + 2 * 3600_000));
+  s.store.addFollowup({ topic: '面试', note: '紧张', dueAt: new Date(0) });
+  s.advance(2 * 3600_000);
   await s.scheduler.tick();
   assert.equal(s.asked.length, 1);
   assert.equal(s.asked[0]?.kind, 'followup');
@@ -59,15 +62,15 @@ test('speaks up for a due follow-up after a quiet spell, and does not repeat it'
 test('notifies only when she actually said something', async () => {
   const spoke = setup({ outcome: 'spoke' });
   spoke.store.append({ role: 'user', kind: 'text', text: 'x' });
-  spoke.store.addFollowup({ topic: '面试', note: '', dueAt: new Date(Date.now() - MIN) });
-  spoke.setNow(new Date(Date.now() + 2 * 3600_000));
+  spoke.store.addFollowup({ topic: '面试', note: '', dueAt: new Date(0) });
+  spoke.advance(2 * 3600_000);
   await spoke.scheduler.tick();
   assert.deepEqual(spoke.notified, ['嗨']);
 
   const passed = setup({ outcome: 'passed' });
   passed.store.append({ role: 'user', kind: 'text', text: 'x' });
-  passed.store.addFollowup({ topic: '面试', note: '', dueAt: new Date(Date.now() - MIN) });
-  passed.setNow(new Date(Date.now() + 2 * 3600_000));
+  passed.store.addFollowup({ topic: '面试', note: '', dueAt: new Date(0) });
+  passed.advance(2 * 3600_000);
   await passed.scheduler.tick();
   assert.deepEqual(passed.notified, []);
 });
@@ -75,17 +78,17 @@ test('notifies only when she actually said something', async () => {
 test('a failed speak-up leaves the follow-up for a later try', async () => {
   const s = setup({ outcome: 'failed' });
   s.store.append({ role: 'user', kind: 'text', text: 'x' });
-  s.store.addFollowup({ topic: '面试', note: '', dueAt: new Date(Date.now() - MIN) });
-  s.setNow(new Date(Date.now() + 2 * 3600_000));
+  s.store.addFollowup({ topic: '面试', note: '', dueAt: new Date(0) });
+  s.advance(2 * 3600_000);
   await s.scheduler.tick();
-  assert.equal(s.store.dueFollowups(new Date(Date.now() + 3 * 3600_000)).length, 1);
+  assert.equal(s.store.dueFollowups(new Date(0)).length, 1);
 });
 
 test('stays out of the way while a reply is in progress', async () => {
   const s = setup({ busy: true });
   s.store.append({ role: 'user', kind: 'text', text: 'x' });
-  s.store.addFollowup({ topic: '面试', note: '', dueAt: new Date(Date.now() - MIN) });
-  s.setNow(new Date(Date.now() + 2 * 3600_000));
+  s.store.addFollowup({ topic: '面试', note: '', dueAt: new Date(0) });
+  s.advance(2 * 3600_000);
   await s.scheduler.tick();
   assert.equal(s.asked.length, 0);
 });
@@ -93,10 +96,10 @@ test('stays out of the way while a reply is in progress', async () => {
 test('extracts memory once the conversation has gone quiet, not mid-chat', async () => {
   const s = setup();
   s.store.append({ role: 'user', kind: 'text', text: 'x' });
-  s.setNow(new Date(Date.now() + 2 * MIN));
+  s.advance(2 * MIN);
   await s.scheduler.tick();
   assert.equal(s.extractions(), 0, 'still chatting');
-  s.setNow(new Date(Date.now() + 15 * MIN));
+  s.advance(15 * MIN);
   await s.scheduler.tick();
   assert.equal(s.extractions(), 1);
 });
@@ -105,7 +108,7 @@ test('overlapping ticks never run twice at once', async () => {
   let release!: () => void;
   const s = setup({ extract: () => new Promise(r => { release = () => r('nothing_new'); }) as Promise<'nothing_new'> });
   s.store.append({ role: 'user', kind: 'text', text: 'x' });
-  s.setNow(new Date(Date.now() + 15 * MIN));
+  s.advance(15 * MIN);
   const first = s.scheduler.tick();
   const second = s.scheduler.tick();
   assert.equal(first, second, 'the overlapping call joins the pass in progress');
@@ -130,10 +133,12 @@ test('a morning greeting marks the day, so a second tick does not greet again', 
 test('after she declines a missed-you nudge, she is not asked again until the user speaks', async () => {
   const s = setup({ outcome: 'passed' });
   s.store.append({ role: 'user', kind: 'text', text: 'x' });
-  s.setNow(new Date(Date.now() + 40 * 3600_000));
+  // Land outside the quiet window (23→8): a fixed +40h would hit 07:00 and
+  // the nudge would be blocked for the wrong reason.
+  s.setNow(new Date(2026, 9, 24, 19, 0));
   await s.scheduler.tick();
   assert.equal(s.asked[0]?.kind, 'miss_you');
-  s.setNow(new Date(Date.now() + 41 * 3600_000));
+  s.setNow(new Date(2026, 9, 24, 20, 0));
   await s.scheduler.tick();
   assert.equal(s.asked.length, 1, 'declined once: wait for the user, do not re-ask every minute');
 });
@@ -141,14 +146,14 @@ test('after she declines a missed-you nudge, she is not asked again until the us
 test('failures back off instead of calling the model every minute', async () => {
   const s = setup({ outcome: 'failed' });
   s.store.append({ role: 'user', kind: 'text', text: 'x' });
-  s.store.addFollowup({ topic: '面试', note: '', dueAt: new Date(Date.now() - MIN) });
-  const t0 = Date.now() + 2 * 3600_000;
-  s.setNow(new Date(t0));
+  s.store.addFollowup({ topic: '面试', note: '', dueAt: new Date(0) });
+  const t0 = 2 * 3600_000;
+  s.advance(t0);
   await s.scheduler.tick();
-  s.setNow(new Date(t0 + MIN));
+  s.advance(MIN);
   await s.scheduler.tick();
   assert.equal(s.asked.length, 1, 'no retry a minute later');
-  s.setNow(new Date(t0 + 31 * MIN));
+  s.advance(30 * MIN);
   await s.scheduler.tick();
   assert.equal(s.asked.length, 2, 'retried after the backoff');
 });
@@ -157,10 +162,10 @@ test('a failing memory extraction backs off too', async () => {
   let calls = 0;
   const s = setup({ extract: async () => { calls++; throw new Error('model down'); } });
   s.store.append({ role: 'user', kind: 'text', text: 'x' });
-  const t0 = Date.now() + 15 * MIN;
-  s.setNow(new Date(t0));
+  const t0 = 15 * MIN;
+  s.advance(t0);
   await s.scheduler.tick();
-  s.setNow(new Date(t0 + MIN));
+  s.advance(MIN);
   await s.scheduler.tick();
   assert.equal(calls, 1);
 });

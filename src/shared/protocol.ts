@@ -56,12 +56,24 @@ export type AppStatus = {
   companionName: string;
   brain: { source: BrainSource; ready: boolean; model: string | null };
   voice: { provider: VoiceProviderId; ready: boolean };
+  /** Whether she can hear: speech-to-text has a key. Without it, answers are typed. */
+  listen: { ready: boolean };
 };
 
+/** What the user said aloud during onboarding, and the alias taken from it (null: none heard). */
+export type HeardAlias = { said: string; alias: string | null };
+
 export type InitiativeSettings = {
-  enabled: boolean; notify: boolean; quietStart: number; quietEnd: number; dailyLimit: number;
-  cooldownMinutes: number; missYouHours: number; morningStart: number; morningEnd: number;
+  mode: 'off' | 'occasional' | 'often'; notify: boolean;
 };
+
+/** How she should meet a bad mood. Chosen in the first meeting, kept for good. */
+export type Comfort = 'listen' | 'advise' | 'cheer' | 'depends';
+/** When the user tends to want company. Drives when she may reach out. */
+export type Rhythm = 'morning' | 'commute' | 'night' | 'anytime';
+
+/** One question of the first meeting, in order. */
+export type OnboardingStep = 'begin' | 'alias' | 'comfort' | 'rhythm' | 'notes' | 'name' | 'done';
 
 /** Settings as the browser sees them: secrets reduced to presence flags. */
 export type PublicSettings = {
@@ -80,8 +92,8 @@ export type PublicSettings = {
 };
 
 export type SettingsUpdate = {
-  companion?: { name?: string };
-  initiative?: Partial<Pick<InitiativeSettings, 'enabled' | 'notify' | 'quietStart' | 'quietEnd' | 'dailyLimit'>>;
+  companion?: { name?: string; userName?: string };
+  initiative?: Partial<Pick<InitiativeSettings, 'mode' | 'notify'>>;
   brain?: { baseUrl?: string; apiKey?: string; model?: string };
   voice?: {
     provider?: VoiceProviderId; speechRate?: number;

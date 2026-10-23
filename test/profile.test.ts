@@ -34,30 +34,42 @@ test('rejects empty or oversized content', () => {
   assert.throws(() => writeProfileDocument(dir(), 'memory', 'x'.repeat(300 * 1024), null), /256 KiB/);
 });
 
-test('system prompt carries identity, memory and the companion name', () => {
+test('system prompt carries identity, memory and both names', () => {
   const d = dir();
   writeFileSync(join(d, 'IDENTITY.md'), '说话带点撒娇');
   writeFileSync(join(d, 'MEMORY.md'), '- 用户叫阿亮，程序员');
-  const prompt = buildSystemPrompt(d, { companionName: '小月', now: new Date('2026-10-22T22:30:00+08:00') });
+  const prompt = buildSystemPrompt(d, {
+    companionName: '小月', userName: '阿亮',
+    now: new Date('2026-10-22T22:30:00+08:00'),
+  });
   assert.match(prompt, /小月/);
-  assert.match(prompt, /说话带点撒娇/);
   assert.match(prompt, /阿亮/);
+  assert.match(prompt, /叫他「阿亮」/);
+  assert.match(prompt, /说话带点撒娇/);
   assert.match(prompt, /send_voice/);
   assert.match(prompt, /2026/);
 });
 
+test('without a user name the prompt refuses to invent one', () => {
+  const prompt = buildSystemPrompt(dir(), { companionName: 'Vivi', userName: '', now: new Date() });
+  assert.match(prompt, /还没有告诉你怎么称呼/);
+  assert.match(prompt, /不要硬造称呼/);
+});
+
 test('system prompt asks to get to know the user when there is no memory yet', () => {
-  const prompt = buildSystemPrompt(dir(), { companionName: 'Vivi', now: new Date() });
+  const prompt = buildSystemPrompt(dir(), { companionName: 'Vivi', userName: '', now: new Date() });
   assert.match(prompt, /还不了解/);
 });
 
-test('persona version changes with memory, name or day, but not within the same day', () => {
+test('persona version changes with memory, a name or the day, but not within the same day', () => {
   const d = dir();
   const morning = new Date(2026, 9, 22, 9), evening = new Date(2026, 9, 22, 22), tomorrow = new Date(2026, 9, 23, 9);
-  const v1 = personaVersion(d, 'Vivi', morning);
-  assert.equal(personaVersion(d, 'Vivi', evening), v1);
-  assert.notEqual(personaVersion(d, 'Vivi', tomorrow), v1);
-  assert.notEqual(personaVersion(d, '阿月', morning), v1);
+  const v1 = personaVersion(d, { companionName: 'Vivi', userName: '阿亮' }, morning);
+  assert.equal(personaVersion(d, { companionName: 'Vivi', userName: '阿亮' }, evening), v1);
+  assert.notEqual(personaVersion(d, { companionName: 'Vivi', userName: '阿亮' }, tomorrow), v1);
+  assert.notEqual(personaVersion(d, { companionName: '阿月', userName: '阿亮' }, morning), v1);
+  // The user's name alone is enough to rebuild the brain.
+  assert.notEqual(personaVersion(d, { companionName: 'Vivi', userName: '小亮' }, morning), v1);
   writeFileSync(join(d, 'MEMORY.md'), '- 叫阿亮');
-  assert.notEqual(personaVersion(d, 'Vivi', morning), v1);
+  assert.notEqual(personaVersion(d, { companionName: 'Vivi', userName: '阿亮' }, morning), v1);
 });

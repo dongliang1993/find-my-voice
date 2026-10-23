@@ -26,8 +26,11 @@
   "scripts": {
     "dev": "node scripts/dev.mjs",
     "dev:server": "tsx watch src/server/index.ts --no-open",
+    "onboard:reset": "node scripts/onboard-reset.mjs",
+    "onboard:wipe": "node scripts/onboard-reset.mjs --wipe",
     "dev:web": "vite",
     "build": "npm run typecheck && vite build && node scripts/build-server.mjs",
+    "build:app": "npm run build && cargo-tauri build && node scripts/assemble-sidecar.mjs",
     "start": "node dist/server/index.js",
     "test": "tsx --test test/*.test.ts",
     "typecheck": "tsc --noEmit && tsc --noEmit -p web"
@@ -38,7 +41,8 @@
     "@hono/node-ws": "^1.3.1",
     "@msgpack/msgpack": "^3.1.3",
     "hono": "^4.13.13",
-    "zod": "^4.6.7"
+    "zod": "^4.6.7",
+    "zustand": "^5.0.16"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.3.3",

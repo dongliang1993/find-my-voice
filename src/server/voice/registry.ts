@@ -3,6 +3,9 @@ import type { VoiceProviderId } from '../../shared/protocol.js';
 import { FishAudioProvider } from './fish.js';
 import { ElevenLabsProvider } from './eleven.js';
 import { FixtureProvider, VolcengineProvider, type TtsProvider, type VoiceRef } from './provider.js';
+import { ElevenLabsTranscriber } from './scribe.js';
+import { VolcengineTranscriber } from './volc-asr.js';
+import type { Transcriber } from './transcriber.js';
 
 type VoiceSettings = Settings['voice'];
 
@@ -38,4 +41,22 @@ export function voiceReady(voice: VoiceSettings): boolean {
     volcengine: Boolean(voice.volcengine.apiKey && voice.volcengine.voiceId && voice.volcengine.resourceId),
   };
   return ready[voice.provider];
+}
+
+/**
+ * Speech-to-text. The same provider that speaks also listens: an ElevenLabs
+ * key hears through Scribe, a Volcengine key through its flash recogniser, so
+ * nobody has to buy a second vendor just to answer out loud.
+ */
+export function createTranscriber(voice: VoiceSettings): Transcriber {
+  return voice.provider === 'volcengine'
+    ? new VolcengineTranscriber({ apiKey: voice.volcengine.apiKey, timeoutMs: voice.timeoutMs })
+    : new ElevenLabsTranscriber({ apiKey: voice.elevenlabs.apiKey, timeoutMs: voice.timeoutMs });
+}
+
+/** Whether she can hear at all: the speaking provider needs a key of its own. */
+export function listenReady(voice: VoiceSettings): boolean {
+  return voice.provider === 'volcengine'
+    ? Boolean(voice.volcengine.apiKey)
+    : Boolean(voice.elevenlabs.apiKey);
 }

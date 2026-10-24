@@ -3,7 +3,6 @@ import { AnimatePresence } from 'motion/react';
 import { toast } from 'sonner';
 import { audio } from '@/lib/audio';
 import { Onboarding } from '@/features/onboarding/Onboarding';
-import { SettingsPanel } from '@/components/SettingsPanel';
 import { Toaster } from '@/components/ui/sonner';
 import { LoadingGate } from '@/features/loading';
 import { Stage } from '@/features/stage/Stage';
@@ -15,9 +14,8 @@ import { useGlobal } from '@/store/global';
 export function App() {
   const chat = useChat();
   const playing = usePlaying();
-  const [settingsOpen, setSettingsOpen] = useState(false);
-  /** The recorder is open: the stage needs it, so it lives above the stage. */
-  const [listening, setListening] = useState(false);
+  /** The first meeting just ended on this page: the stage takes over from its last frame. */
+  const [arrived, setArrived] = useState(false);
   const ready = useGlobal(store => store.ready);
   const status = useGlobal(store => store.status);
   const onboarding = useGlobal(store => store.onboarding);
@@ -32,8 +30,6 @@ export function App() {
   useEffect(() => {
     checkReady();
   }, [checkReady]);
-  // First visit without a model: open setup straight away.
-  useEffect(() => { if (status && !status.brain.ready) setSettingsOpen(true); }, [status]);
   // Any gesture unlocks audio so her first voice message can autoplay.
   useEffect(() => {
     const unlock = () => audio.unlock();
@@ -62,20 +58,20 @@ export function App() {
   // The opening plays by itself, so it must know whether a voice is ready before it starts.
   const screen = firstMeeting
     ? status && <Onboarding voiceReady={status.voice.ready} listenReady={status.listen.ready} onDone={() => {
+      setArrived(true);
       markOnboarded();
       refreshStatus();
     }} />
-    : (
+    : status && (
       <>
-        <Stage messages={chat.messages} status={chat.status} name={name} playing={Boolean(playing)}
-          listening={listening} onListenChange={setListening}
+        <Stage messages={chat.messages} status={chat.status} name={name} playing={playing}
+          lines={chat.lines} canListen={Boolean(status.listen.ready)} arrived={arrived}
+          letters={chat.letters} edits={chat.edits} note={chat.note} noteEdits={chat.noteEdits} filedNotes={chat.filedNotes}
+          appStatus={status}
           onSend={chat.send} onInterrupt={chat.interrupt}
-          onOpenSettings={() => setSettingsOpen(true)} needsSetup={needsSetup}
-          online={online && Boolean(status?.brain.ready)} />
-        {status && (
-          <SettingsPanel open={settingsOpen} status={status} onOpenChange={setSettingsOpen}
-            onSaved={() => { void refreshStatus(); setSettingsOpen(false); }} />
-        )}
+          needsSetup={needsSetup}
+          online={online && Boolean(status.brain.ready)}
+          onReading={chat.setReading} />
         <Toaster position="top-center" />
       </>
     );

@@ -29,9 +29,12 @@ function stored(): ThemeName | null {
 let forced: ThemeName | null = null;
 let chosen = stored();
 
+/** Screens that take their light from the hour instead of the system; the latest one up decides. */
+const holds: { dark: boolean }[] = [];
+
 const resolve = (): Snapshot => {
   const theme = forced ?? chosen ?? DEFAULT_THEME;
-  return { theme, dark: theme === 'radio' || systemDark.matches };
+  return { theme, dark: theme === 'radio' || (holds.at(-1)?.dark ?? systemDark.matches) };
 };
 
 let snapshot = resolve();
@@ -66,6 +69,20 @@ export function setTheme(theme: ThemeName) {
 export function forceTheme(theme: ThemeName | null) {
   forced = theme;
   update(resolve());
+}
+
+/**
+ * Lets a screen decide light or dark for the whole page while it is up — the
+ * first meeting and the loading gate follow her hour, not the system. `radio`
+ * stays dark whatever is held.
+ */
+export function holdDark() {
+  const hold = { dark: snapshot.dark };
+  holds.push(hold);
+  return {
+    set(dark: boolean) { hold.dark = dark; update(resolve()); },
+    release() { holds.splice(holds.indexOf(hold), 1); update(resolve()); },
+  };
 }
 
 export function useTheme(): Snapshot {

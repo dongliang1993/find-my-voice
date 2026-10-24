@@ -11,19 +11,21 @@ export type StageState = 'idle' | 'listening' | 'thinking' | 'speaking';
 export type MicLook = 'normal' | 'active' | 'dim';
 
 export interface StateVisual {
-  /** Her words: how far they recede while it is not her turn. */
-  lineBlur: number;
+  /** Her words: how far they recede while it is not her turn. Faded, never blurred: still readable. */
   lineOpacity: number;
   /** The stage's brightness, 1 = untouched. */
   herBrightness: number;
   mic: MicLook;
 }
 
+/** How much of her wave the stage keeps in silence; the first meeting settles to it on the way there. */
+export const STAGE_REST = 0.12;
+
 export const VISUALS: Record<StageState, StateVisual> = {
-  idle: { lineBlur: 0, lineOpacity: 0.9, herBrightness: 1, mic: 'normal' },
-  listening: { lineBlur: 6, lineOpacity: 0.35, herBrightness: 0.92, mic: 'active' },
-  thinking: { lineBlur: 8, lineOpacity: 0, herBrightness: 0.95, mic: 'dim' },
-  speaking: { lineBlur: 0, lineOpacity: 1, herBrightness: 1, mic: 'dim' },
+  idle: { lineOpacity: 0.9, herBrightness: 1, mic: 'normal' },
+  listening: { lineOpacity: 0.5, herBrightness: 0.92, mic: 'active' },
+  thinking: { lineOpacity: 0.5, herBrightness: 0.95, mic: 'dim' },
+  speaking: { lineOpacity: 1, herBrightness: 1, mic: 'dim' },
 };
 
 /**

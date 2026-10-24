@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { closeSync, lstatSync, mkdirSync, openSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import type { Comfort } from '../../shared/protocol.js';
+import type { Comfort, ReplyLanguage } from '../../shared/protocol.js';
 import { DomainError } from '../errors.js';
 
 // IDENTITY.md is who the companion is; MEMORY.md is what it knows about the user.
@@ -64,9 +64,9 @@ const DEFAULT_IDENTITY = '你温暖、真诚、有点俏皮，像一个很懂对
  * on purpose: rebuilding the brain every minute would cost a cold start per
  * reply.
  */
-export function personaVersion(dataDir: string, names: { companionName: string; userName: string }, now: Date): string {
+export function personaVersion(dataDir: string, names: { companionName: string; userName: string; language?: ReplyLanguage }, now: Date): string {
   const docs = ['identity', 'memory'].map(n => readProfileDocument(dataDir, n as ProfileName).sha256 ?? '-').join(':');
-  return hash(`${docs}:${names.companionName}:${names.userName}:${now.toLocaleDateString('sv-SE')}`);
+  return hash(`${docs}:${names.companionName}:${names.userName}:${names.language ?? 'auto'}:${now.toLocaleDateString('sv-SE')}`);
 }
 
 /** What she was told in the first meeting about meeting a bad mood. */
@@ -77,8 +77,32 @@ const COMFORT: Record<Comfort, string> = {
   depends: '对方难受的时候，看情况来：有时需要人听，有时需要人逗，先判断再选。',
 };
 
+/**
+ * Everything around this block is Chinese — the prompt, the notebook, the
+ * transcript above it — so a language that is not Chinese has to be argued
+ * against that pull. It closes the prompt, where the pull is strongest.
+ */
+const REPLY_LANGUAGE: Record<ReplyLanguage, string> = {
+  auto: '',
+  zh: `
+
+# Language
+Reply in Chinese only. Even when the user writes English, answer in Chinese.`,
+  en: `
+
+# Language
+Write every single message in English, including voice. Even when the user writes in Chinese, answer in English — do not switch to match them. Keep names as they are.`,
+};
+
+type PromptInput = {
+  companionName: string; userName: string; comfort?: Comfort;
+  /** Defaults to `auto`, which says nothing and lets her mirror the user. */
+  language?: ReplyLanguage;
+  now: Date;
+};
+
 /** The companion's persona prompt. Rebuilt for each new brain session. */
-export function buildSystemPrompt(dataDir: string, { companionName, userName, comfort = 'depends', now }: { companionName: string; userName: string; comfort?: Comfort; now: Date }): string {
+export function buildSystemPrompt(dataDir: string, { companionName, userName, comfort = 'depends', language = 'auto', now }: PromptInput): string {
   const identity = readProfileDocument(dataDir, 'identity').content?.trim() || DEFAULT_IDENTITY;
   const memory = readProfileDocument(dataDir, 'memory').content?.trim();
   const time = now.toLocaleString('zh-CN', { dateStyle: 'full', timeStyle: 'short', hour12: false });
@@ -100,11 +124,21 @@ ${userName
 ${COMFORT[comfort]}
 
 # 怎么说话
-- 像真人发消息一样：简短、口语化，一次通常一两句话，可以分几条发。不要用 Markdown、标题或列表，也不要用括号写动作或神态（比如"（笑）"），情绪放进措辞和语气里。
-- 你可以发语音：调用 send_voice 工具，传入要说的话和情绪。适合撒娇、安慰、晚安、开心、或者对方想听你声音的时候。不要每条都发语音。
-- 发了语音之后，文字回复里不要重复语音的内容；可以什么都不写，或者补一句很短的话。
+- 像真人发消息一样：简短、口语化，一次通常一两句话，可以分几条发。不要用 Markdown、HTML 标签（比如 <p>）、标题、加粗或列表符号，也不要用括号写动作或神态（比如"（笑）"），情绪放进措辞和语气里。
+- 一条回复最多三句话。话被屏幕一句一句读出来，说多了对方就看不到头。
+- 对方让你推荐一两个东西时，像朋友那样直接说，各用一句话说为什么。
+- 闲聊的回复尽量用语音：调用 send_voice 工具，传入要说的话和情绪。像真人一样，想到什么随口一说的时候，先想到的是开口说，而不是打字。
+- 片名、歌名这类要看清楚的短内容，用文字。拿不准的时候也用语音。
+- 发了语音之后通常什么都不写。偶尔才补一句很短的话，而且不要重复语音的内容。
 - 语音内容是要被朗读的口语：不要包含表情符号、括号动作描写或网址。
 
+# 写信
+值得留下来的东西，你不念出来，而是写成一封信交给对方（write_letter），对方会在信纸上看你写：
+- 写信：一组可以挑的东西（3 个及以上的电影、歌、书、地点）；有步骤或结构的内容（计划、菜谱、清单）；对方明确要你写下来的东西（一首诗、一段话、一封信）；对方要你总结一段长对话。
+- 不写信，只说话：闲聊、安慰、回答简单的问题、只推荐一个、不到 3 条或很短的内容、对方正在倾诉情绪的时候（不要把心事变成一份"交付物"）。拿不准就只说话。
+- 写信时先说话：一两句口语，带一点你自己的看法，告诉对方你写给他了，比如「下雨的周六适合慢一点的东西，我挑了几部电影和几首歌写给你了。如果只看一部，我会选《花样年华》。」不要复述信的内容。
+- 对方看着信说要换、删、加某一条时，用 edit_letter 改那封信，先口头回应一句；说得不明确就先问是哪一条，不要猜。
+
 # 现在
-${time}`;
+${time}${REPLY_LANGUAGE[language]}`;
 }

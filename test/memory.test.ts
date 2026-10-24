@@ -4,11 +4,11 @@ import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { ChatStore } from '../src/server/chat/store.js';
-import { MemoryExtractor, type Extraction } from '../src/server/memory/extractor.js';
+import { MemoryExtractor, type ExtractionInput } from '../src/server/memory/extractor.js';
 
 const NOW = new Date('2026-10-22T14:00:00+08:00');
 
-function setup(extraction: Extraction | (() => Promise<Extraction>)) {
+function setup(extraction: ExtractionInput | (() => Promise<ExtractionInput>)) {
   const dir = mkdtempSync(join(tmpdir(), 'fmv-mem-'));
   const store = new ChatStore(dir);
   const prompts: string[] = [];
@@ -100,7 +100,7 @@ test('a failed extraction does not advance the cursor, so nothing is lost', asyn
 
 test('her proactive messages and voice transcripts are part of what is read', async () => {
   const { store, extractor, prompts } = setup({ facts: [], followups: [] });
-  store.append({ role: 'assistant', kind: 'voice', text: '早呀', initiative: 'morning' });
+  store.append({ role: 'assistant', kind: 'voice', text: '早呀', initiative: 'rhythm' });
   await extractor.run();
   assert.match(prompts[0]!, /早呀/);
 });
@@ -126,4 +126,65 @@ test('a concurrent hand edit of MEMORY.md wins, and extraction moves on', async 
   assert.equal(readFileSync(join(dir, 'MEMORY.md'), 'utf8'), '- 我刚手改的\n');
   assert.equal(await extractor.run(), 'nothing_new', 'cursor advanced: no endless retry');
   assert.equal(calls, 1);
+});
+
+test('a follow-up the user has already answered is closed, not asked about', async () => {
+  const { store, extractor } = setup({ facts: [], followups: [], resolved: ['周五的面试'] });
+  store.addFollowup({ topic: '周五的面试', note: '他有点紧张', dueAt: new Date('2026-10-30T20:00:00+08:00') });
+  store.append({ role: 'user', kind: 'text', text: '面试过了，还挺顺利' });
+  assert.equal(await extractor.run(), 'updated');
+  assert.equal(store.openFollowups().length, 0);
+});
+
+test('only the topic that was answered is closed', async () => {
+  const { store, extractor } = setup({ facts: [], followups: [], resolved: ['周五的面试'] });
+  store.addFollowup({ topic: '周五的面试', note: '', dueAt: new Date('2026-10-30T20:00:00+08:00') });
+  store.addFollowup({ topic: '周末搬家', note: '', dueAt: new Date('2026-11-02T20:00:00+08:00') });
+  store.append({ role: 'user', kind: 'text', text: '面试过了' });
+  await extractor.run();
+  assert.deepEqual(store.openFollowups().map(f => f.topic), ['周末搬家']);
+});
+
+test('the open follow-ups are shown to the model, so it can tell one was answered', async () => {
+  const { store, extractor, prompts } = setup({ facts: [], followups: [] });
+  store.addFollowup({ topic: '周五的面试', note: '他有点紧张', dueAt: new Date('2026-10-30T20:00:00+08:00') });
+  store.append({ role: 'user', kind: 'text', text: '嗯' });
+  await extractor.run();
+  assert.match(prompts[0]!, /周五的面试/);
+  assert.match(prompts[0]!, /resolved/);
+});
+
+// ---- echoes ----
+
+test('a line the user really said is held as an echo, dated by when they said it', async () => {
+  const { store, extractor } = setup({ facts: [], followups: [], echoes: [{ line: '「那片橙色的天」', note: '像被点着了' }] });
+  const said = store.append({ role: 'user', kind: 'text', text: '下班路上看到那片橙色的天，整条街都亮了' });
+  assert.equal(await extractor.run(), 'updated');
+  const [echo] = store.echoes(new Date(0), new Date('2100-01-01'));
+  assert.equal(echo?.line, '那片橙色的天', 'quotes stripped');
+  assert.equal(echo?.saidAt, said.createdAt);
+});
+
+test('a paraphrase is not the user\'s words, so it is not held', async () => {
+  const { store, extractor } = setup({ facts: [], followups: [], echoes: [{ line: '橘色的晚霞', note: '' }] });
+  store.append({ role: 'user', kind: 'text', text: '下班路上看到那片橙色的天' });
+  await extractor.run();
+  assert.equal(store.echoes(new Date(0), new Date('2100-01-01')).length, 0);
+});
+
+test('only the user\'s words can become an echo, never hers', async () => {
+  const { store, extractor } = setup({ facts: [], followups: [], echoes: [{ line: '像一封慢慢拆开的信', note: '' }] });
+  store.append({ role: 'user', kind: 'text', text: '嗯' });
+  store.append({ role: 'assistant', kind: 'text', text: '今天像一封慢慢拆开的信' });
+  await extractor.run();
+  assert.equal(store.echoes(new Date(0), new Date('2100-01-01')).length, 0);
+});
+
+test('the model is asked for echoes, verbatim, and to leave pain alone', async () => {
+  const { store, extractor, prompts } = setup({ facts: [], followups: [] });
+  store.append({ role: 'user', kind: 'text', text: 'x' });
+  await extractor.run();
+  assert.match(prompts[0]!, /echoes/);
+  assert.match(prompts[0]!, /逐字摘录/);
+  assert.match(prompts[0]!, /痛苦、隐私/);
 });

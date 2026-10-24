@@ -9,9 +9,12 @@ const WAKE = ['mousemove', 'mousedown', 'keydown', 'wheel'] as const;
  * `paused` freezes the current answer rather than forcing it either way: while
  * the user is speaking the buttons must not disappear under their hand, and
  * they must not pop back on every mouse twitch either.
+ *
+ * `startHidden` keeps the chrome away until the first movement, for a screen
+ * that arrives out of one that had none.
  */
-export function useIdleChrome(delay = 3000, paused = false) {
-  const [hidden, setHidden] = useState(false);
+export function useIdleChrome(delay = 3000, paused = false, startHidden = false) {
+  const [hidden, setHidden] = useState(startHidden);
 
   useEffect(() => {
     let timer = window.setTimeout(() => setHidden(true), delay);

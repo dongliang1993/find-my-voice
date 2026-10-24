@@ -6,6 +6,8 @@ import { serveStatic } from '@hono/node-server/serve-static';
 import { createNodeWebSocket } from '@hono/node-ws';
 import { z } from 'zod';
 import type { ServerEvent } from '../shared/protocol.js';
+import { linkUrl } from '../shared/links.js';
+import { openExternal } from './open.js';
 import { clientEventSchema } from './chat/client-events.js';
 import { maskSettings, settingsPatchSchema } from './config.js';
 import { DomainError, errorPayload } from './errors.js';
@@ -143,6 +145,59 @@ export function createHttp(app: App, webRoot: string) {
     return c.body(await readFile(path), 200, { 'Content-Type': 'audio/wav', 'Cache-Control': 'private, max-age=31536000, immutable' });
   });
 
+  // ---- letters ----
+  const noLetter = { code: 'NOT_FOUND', message: '这封信不在了' };
+  http.post('/api/letters/:id/open', c => {
+    const letter = app.chat.openLetter(c.req.param('id'));
+    return letter ? c.json(letter) : c.json(noLetter, 404);
+  });
+  http.delete('/api/letters/:id', c => (app.chat.deleteLetter(c.req.param('id')) ? c.body(null, 204) : c.json(noLetter, 404)));
+  http.post('/api/letters/:id/rewrite', c => (app.chat.rewriteLetter(c.req.param('id'))
+    ? c.body(null, 202)
+    : c.json({ code: 'NOT_BROKEN', message: '这封信不需要重写' }, 409)));
+  // The URL is built here from what the letter stores — never taken from the
+  // request — so a page can only ever open the search a letter already names.
+  http.post('/api/letters/:id/blocks/:blockId/open', c => {
+    const block = app.store.letter(c.req.param('id'))?.blocks.find(b => b.id === c.req.param('blockId'));
+    if (block?.type !== 'item' || !block.link) return c.json({ code: 'NOT_FOUND', message: '这一条没有可以打开的链接' }, 404);
+    const url = linkUrl(block.link);
+    // The desktop app and a browser on this machine both land in the system browser this way.
+    openExternal(url);
+    return c.json({ url });
+  });
+
+  // ---- notes ----
+
+  // Closed on the page: nothing is kept, nothing is asked.
+  http.delete('/api/note', c => (app.chat.closeNote() ? c.body(null, 204) : c.body(null, 204)));
+  // Taken off the table and kept: the dock holds it from here.
+  http.post('/api/note/file', c => {
+    const filed = app.chat.fileNote();
+    return filed ? c.json(filed) : c.json({ code: 'NOT_FOUND', message: '桌上没有便签' }, 404);
+  });
+  // One of the dock's notes, back on the table.
+  http.post('/api/note/unfile', async c => {
+    const body = await c.req.json().catch(() => null) as { noteId?: unknown } | null;
+    const note = typeof body?.noteId === 'string' ? app.chat.unfileNote(body.noteId) : null;
+    return note ? c.json(note) : c.json({ code: 'NOT_FOUND', message: '没有这张便签' }, 404);
+  });
+  // The user's own hand on a block: no ops, no playthrough.
+  http.patch('/api/note/blocks/:blockId', async c => {
+    const body = await c.req.json().catch(() => null) as { text?: unknown; done?: unknown } | null;
+    const id = c.req.param('blockId');
+    // A tick in a check box, if that is what came; otherwise the block's own words.
+    const note = typeof body?.done === 'boolean'
+      ? app.chat.tickNoteCheck(id, body.done)
+      : app.chat.patchNoteBlock(id, typeof body?.text === 'string' ? body.text : '');
+    return note ? c.json(note) : c.json({ code: 'NOT_FOUND', message: '桌上没有便签' }, 404);
+  });
+  // The whole card in one piece, typed freehand: read back into blocks, saved at once.
+  http.put('/api/note/text', async c => {
+    const body = await c.req.json().catch(() => null) as { text?: unknown } | null;
+    const note = app.chat.rewriteNoteText(typeof body?.text === 'string' ? body.text : '');
+    return note ? c.json(note) : c.json({ code: 'NOT_FOUND', message: '桌上没有便签' }, 404);
+  });
+
   http.get('/api/ws', upgradeWebSocket(c => {
     const origin = c.req.header('origin');
     const host = c.req.header('host');
@@ -166,6 +221,7 @@ export function createHttp(app: App, webRoot: string) {
         const message = parsed.data;
         if (message.type === 'send') void app.chat.send(message.clientId, message.text);
         else if (message.type === 'presence') app.presence.set(viewer, message.visible);
+        else if (message.type === 'reading') app.chat.setReading(message.letterId);
         else void app.chat.interrupt();
       },
       onClose() { unsubscribe(); app.presence.delete(viewer); },

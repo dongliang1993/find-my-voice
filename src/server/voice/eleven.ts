@@ -18,8 +18,6 @@ export const ELEVEN_MODELS = [
 export type ElevenConfig = {
   apiKey: string;
   model: ElevenModel;
-  /** `auto` guesses from the text; `zh` / `en` force that normalizer. */
-  language: SpeechLanguage;
   /** 0..1. Lower is more expressive, higher is flatter. */
   stability: number;
   /** 0..1. How tightly the output tracks the stored voice. */
@@ -89,9 +87,8 @@ export class ElevenLabsProvider implements TtsProvider {
   /** Returns the language hint to send, or null to let the model decide. */
   private languageFor(input: SynthesisInput): SpeechLanguage | null {
     if (!supportsLanguageHint(this.config.model)) return null;
-    // An explicit setting from the caller wins; otherwise fall back to guessing.
+    // The caller resolves the setting; only `auto` reaches here without one.
     if (input.language) return input.language;
-    if (this.config.language !== 'auto') return this.config.language;
     return looksChinese(input.text) ? 'zh' : 'en';
   }
 

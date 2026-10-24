@@ -1,4 +1,4 @@
-import type { ElevenModel, FishModel, PublicSettings, SettingsUpdate, SpeechLanguage, VoiceProviderId } from '@shared/protocol';
+import type { ElevenModel, FishModel, PublicSettings, SettingsUpdate, VoiceProviderId } from '@shared/protocol';
 import { Input } from '@/components/ui/input';
 import { Field } from '@/components/settings/Field';
 import { cn } from '@/lib/utils';
@@ -7,12 +7,9 @@ type Provider = Exclude<VoiceProviderId, 'fixture'>;
 
 export type VoiceDraft = {
   provider: Provider;
-  volcengine: { apiKey: string; voiceId: string; resourceId: string; language: SpeechLanguage };
+  volcengine: { apiKey: string; voiceId: string; resourceId: string };
   fish: { apiKey: string; referenceId: string; model: FishModel };
-  elevenlabs: {
-    apiKey: string; voiceId: string; model: ElevenModel; language: SpeechLanguage;
-    stability: number; similarity: number;
-  };
+  elevenlabs: { apiKey: string; voiceId: string; model: ElevenModel; stability: number; similarity: number };
 };
 
 const PROVIDERS: { id: Provider; label: string; blurb: string }[] = [
@@ -27,29 +24,6 @@ const FISH_MODELS: { id: FishModel; label: string }[] = [
   { id: 'speech-1.6', label: 'Speech 1.6' },
   { id: 'speech-1.5', label: 'Speech 1.5' },
 ];
-
-const LANGUAGES: { id: SpeechLanguage; label: string }[] = [
-  { id: 'auto', label: '自动' },
-  { id: 'zh', label: '中文' },
-  { id: 'en', label: '英文' },
-];
-
-/** Shared by every provider that accepts a reading-language hint. */
-function LanguagePicker({ id, value, onChange }: { id: string; value: SpeechLanguage; onChange: (value: SpeechLanguage) => void }) {
-  return (
-    <Field id={`${id}-language`} label="朗读语言">
-      <div className="flex flex-wrap gap-2" role="radiogroup" aria-labelledby={`${id}-language-label`}>
-        {LANGUAGES.map(l => (
-          <button key={l.id} type="button" role="radio" aria-checked={value === l.id} onClick={() => onChange(l.id)}
-            className={cn('rounded-full border px-3 py-1 text-xs transition-colors',
-              value === l.id ? 'border-primary/60 text-primary' : 'border-border text-muted-foreground hover:text-foreground')}>
-            {l.label}
-          </button>
-        ))}
-      </div>
-    </Field>
-  );
-}
 
 const ELEVEN_MODELS: { id: ElevenModel; label: string }[] = [
   { id: 'eleven_v4', label: 'v4 · 最有表现力' },
@@ -67,13 +41,11 @@ export function draftFrom(settings: PublicSettings | null): VoiceDraft {
     volcengine: {
       apiKey: '', voiceId: settings?.voice.volcengine.voiceId ?? '',
       resourceId: settings?.voice.volcengine.resourceId ?? '',
-      language: settings?.voice.volcengine.language ?? 'auto',
     },
     fish: { apiKey: '', referenceId: settings?.voice.fish.referenceId ?? '', model: settings?.voice.fish.model ?? 's1' },
     elevenlabs: {
       apiKey: '', voiceId: settings?.voice.elevenlabs.voiceId ?? '',
       model: settings?.voice.elevenlabs.model ?? 'eleven_v4',
-      language: settings?.voice.elevenlabs.language ?? 'auto',
       stability: settings?.voice.elevenlabs.stability ?? 0.5,
       similarity: settings?.voice.elevenlabs.similarity ?? 0.8,
     },
@@ -92,14 +64,14 @@ export function patchFrom(draft: VoiceDraft): SettingsUpdate['voice'] {
         provider: 'elevenlabs',
         elevenlabs: {
           ...keep({ apiKey: draft.elevenlabs.apiKey, voiceId: draft.elevenlabs.voiceId }),
-          model: draft.elevenlabs.model, language: draft.elevenlabs.language,
+          model: draft.elevenlabs.model,
           stability: draft.elevenlabs.stability, similarity: draft.elevenlabs.similarity,
         },
       };
     case 'volcengine':
       return {
         provider: 'volcengine',
-        volcengine: { ...keep({ apiKey: draft.volcengine.apiKey, voiceId: draft.volcengine.voiceId, resourceId: draft.volcengine.resourceId }), language: draft.volcengine.language },
+        volcengine: keep({ apiKey: draft.volcengine.apiKey, voiceId: draft.volcengine.voiceId, resourceId: draft.volcengine.resourceId }),
       };
   }
 }
@@ -174,7 +146,6 @@ export function VoiceSettings({ draft, settings, onChange }: Props) {
             ))}
           </div>
         </Field>
-        <LanguagePicker id="eleven" value={draft.elevenlabs.language} onChange={language => setEleven({ language })} />
         <div className="grid grid-cols-2 gap-3">
           <Field id="eleven-stability" label="Stability">
             <Input id="eleven-stability" type="number" min={0} max={1} step={0.05} value={draft.elevenlabs.stability}
@@ -196,7 +167,6 @@ export function VoiceSettings({ draft, settings, onChange }: Props) {
         <Field id="volc-resource" label="资源 ID">
           <Input id="volc-resource" value={draft.volcengine.resourceId} onChange={e => setVolc({ resourceId: e.target.value })} spellCheck={false} />
         </Field>
-        <LanguagePicker id="volc" value={draft.volcengine.language} onChange={language => setVolc({ language })} />
       </>}
     </div>
   );

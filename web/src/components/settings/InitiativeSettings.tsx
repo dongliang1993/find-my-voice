@@ -15,8 +15,8 @@ export const initiativePatch = (d: InitiativeDraft): SettingsUpdate['initiative'
 
 const MODES: { value: InitiativeDraft['mode']; label: string; hint: string }[] = [
   { value: 'off', label: '不打扰', hint: '她永远不会先开口，只有你先说话她才回。' },
-  { value: 'occasional', label: '偶尔', hint: '想起你说过的重要的事，或者很久没聊了，她会先开口。早上不会主动问好，23:00–08:00 安静。' },
-  { value: 'often', label: '经常', hint: '包括早上问好在内，她会更常先开口。' },
+  { value: 'occasional', label: '偶尔', hint: '想起你说过的重要的事（面试、搬家这样有日子的），她会先开口问一句。熟了以后，偶尔也会说起你说过的、她还记着的一句话。23:00–08:00 安静。' },
+  { value: 'often', label: '经常', hint: '在此之上，她会在你常聊天的时段打个招呼。' },
 ];
 
 const permissionNow = () => (typeof Notification === 'undefined' ? 'unsupported' : Notification.permission);
@@ -44,7 +44,7 @@ export function InitiativeSettingsSection({ draft, name, onChange }: Props) {
       <div>
         <h3 id="initiative-title" className="text-sm font-medium text-foreground">主动找你</h3>
         <p className="mt-0.5 text-xs text-muted-foreground">
-          {name || 'Ta'} 会在想起你说过的事、早上、或者很久没聊的时候先开口。也可以让她不打扰你。
+          {name || 'Ta'} 只在真的有事想说的时候先开口：想起你说过的事、还记着你说过的一句话，或者（在“经常”下）你常聊天的时段。不会因为“很久没聊了”来打扰你。
         </p>
       </div>
 

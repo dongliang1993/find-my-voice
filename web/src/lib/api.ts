@@ -1,4 +1,4 @@
-import type { AppStatus, Comfort, HeardAlias, PublicSettings, Rhythm, SettingsUpdate } from '@shared/protocol';
+import type { AppStatus, Comfort, HeardAlias, Letter, Note, PublicSettings, Rhythm, SettingsUpdate } from '@shared/protocol';
 
 export type { AppStatus };
 
@@ -39,6 +39,26 @@ export const api = {
   audioReady: (id: string) => fetch(`/api/audio/${id}`, { method: 'HEAD' }).then(response => response.ok),
   /** The archive of a spoken line. */
   audioUrl: (id: string) => `/api/audio/${id}`,
+  /** Marks a letter read; the server tells every page. */
+  openLetter: (id: string) => request<Letter>(`/api/letters/${id}/open`, { method: 'POST' }),
+  deleteLetter: (id: string) => fetch(`/api/letters/${id}`, { method: 'DELETE' }).then(r => { if (!r.ok) throw new Error('删不掉这封信'); }),
+  /** A letter that broke off, written again. */
+  rewriteLetter: (id: string) => fetch(`/api/letters/${id}/rewrite`, { method: 'POST' }).then(r => r.ok),
+  /** The note on the table, closed: it is gone, nothing kept. */
+  closeNote: () => fetch('/api/note', { method: 'DELETE' }).then(r => { if (!r.ok) throw new Error('收不走这张便签'); }),
+  /** The note taken off the table and kept: what the dock now holds. */
+  fileNote: () => request<Note[]>('/api/note/file', { method: 'POST' }),
+  /** One of the dock's notes, back on the table. */
+  unfileNote: (noteId: string) => request<Note>('/api/note/unfile', { method: 'POST', body: JSON.stringify({ noteId }) }),
+  /** The user's own hand on one block of the note: its words, or a tick in its check box. */
+  patchNoteBlock: (blockId: string, change: { text: string } | { done: boolean }) =>
+    request<Note>(`/api/note/blocks/${blockId}`, { method: 'PATCH', body: JSON.stringify(change) }),
+  /** The whole card typed freehand in one piece: read back into blocks, saved at once. */
+  rewriteNoteText: (text: string) =>
+    request<Note>('/api/note/text', { method: 'PUT', body: JSON.stringify({ text }) }),
+  /** Opens an item's search in the system browser; the URL comes back for when that cannot happen here. */
+  openLetterLink: (letterId: string, blockId: string) =>
+    request<{ url: string }>(`/api/letters/${letterId}/blocks/${blockId}/open`, { method: 'POST' }),
   /** The live conversation socket. */
   wsUrl: () => `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/api/ws`,
 };

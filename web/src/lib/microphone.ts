@@ -12,11 +12,18 @@ const SPEECH_LEVEL = 0.035;
 const TRAILING_SILENCE_MS = 1100;
 /** Nothing said at all for this long: give up and let the page offer typing. */
 const NO_SPEECH_MS = 7000;
-/** Hard cap on one answer; a name takes a few seconds. */
+/** Hard cap on one answer by default; a name takes a few seconds. */
 const MAX_MS = 8000;
 
 export type MicFailure = 'unsupported' | 'denied' | 'no-device' | 'failed';
 export type Heard = { audio: Blob; mime: string } | { silent: true };
+export type ListenOptions = {
+  signal?: AbortSignal;
+  /** Hard cap on the clip. */
+  maxMs?: number;
+  /** False while Space is held: a pause is not the end, letting go is. */
+  endOnSilence?: boolean;
+};
 
 class MicFailureError extends Error {
   constructor(public reason: MicFailure) { super(reason); }
@@ -34,6 +41,8 @@ class Microphone {
   private current = 0;
   /** Set while an answer is recording, so a tap or a released key can end it. */
   private finish: (() => void) | null = null;
+  /** `stop()` came while the answer was still starting (a permission prompt, a quick Space tap). */
+  private stopEarly = false;
 
   /** 0..1 loudness of the user right now; 0 when not listening. */
   level() {
@@ -67,18 +76,20 @@ class Microphone {
     this.ctx.createMediaStreamSource(this.stream).connect(this.analyser);
   }
 
-  /** Ends the answer in progress, keeping what was said. Ignored when nothing is recording. */
+  /** Ends the answer in progress, keeping what was said. An answer still starting ends as soon as it does. */
   stop() {
-    this.finish?.();
+    if (this.finish) this.finish();
+    else this.stopEarly = true;
   }
 
   /**
    * Records one answer: starts at once; ends when `stop()` is called (a second
    * tap, a released key), on trailing silence after speech, on the cap, or when
    * `signal` aborts. Resolves `{ silent: true }` when nothing was said or the
-   * answer was aborted.
+   * answer was aborted — a silent clip is never sent to be transcribed.
    */
-  async listen({ signal }: { signal?: AbortSignal } = {}): Promise<Heard> {
+  async listen({ signal, maxMs = MAX_MS, endOnSilence = true }: ListenOptions = {}): Promise<Heard> {
+    this.stopEarly = false;
     await this.open();
     const stream = this.stream!;
     if (this.ctx?.state === 'suspended') await this.ctx.resume();
@@ -97,6 +108,7 @@ class Microphone {
       const finish = () => { clearInterval(timer); signal?.removeEventListener('abort', finish); this.finish = null; resolve(); };
       this.finish = finish;
       signal?.addEventListener('abort', finish, { once: true });
+      if (this.stopEarly || signal?.aborted) { this.stopEarly = false; queueMicrotask(finish); }
       const timer = window.setInterval(() => {
         const now = performance.now();
         this.level();
@@ -104,7 +116,8 @@ class Microphone {
         if (loud) { spoke = true; quietSince = null; }
         else if (spoke) quietSince ??= now;
         const elapsed = now - started;
-        if (elapsed > MAX_MS || (!spoke && elapsed > NO_SPEECH_MS) || (quietSince !== null && now - quietSince > TRAILING_SILENCE_MS)) finish();
+        const paused = endOnSilence && ((!spoke && elapsed > NO_SPEECH_MS) || (quietSince !== null && now - quietSince > TRAILING_SILENCE_MS));
+        if (elapsed > maxMs || paused) finish();
       }, 50);
     });
     if (recorder.state !== 'inactive') recorder.stop();

@@ -4,7 +4,7 @@ import { ElevenLabsProvider } from '../src/server/voice/eleven.js';
 import { DomainError } from '../src/server/errors.js';
 
 const voice = { id: 'voice-abc', resourceId: '' };
-const config = { apiKey: 'eleven-key', model: 'eleven_v4' as const, language: 'auto' as const, stability: 0.5, similarity: 0.8, timeoutMs: 5000 };
+const config = { apiKey: 'eleven-key', model: 'eleven_v4' as const, stability: 0.5, similarity: 0.8, timeoutMs: 5000 };
 
 /** A fetch that returns the given byte pieces as a stream, recording the request. */
 function fakeFetch(pieces: Buffer[], init: { status?: number } = {}) {
@@ -62,8 +62,8 @@ test('auto mode infers the language from the text', async () => {
 test('an explicit language wins over what the text looks like', async () => {
   for (const forced of ['zh', 'en'] as const) {
     const { impl, calls } = fakeFetch([Buffer.alloc(96)]);
-    // Chinese text, but the setting says English: the setting must win.
-    await new ElevenLabsProvider({ ...config, language: forced }, impl).synthesize({ text: '你好呀', voice, speechRate: 0 }, { format: 'pcm' });
+    // Chinese text, but the caller says English: the caller must win.
+    await new ElevenLabsProvider(config, impl).synthesize({ text: '你好呀', voice, speechRate: 0, language: forced }, { format: 'pcm' });
     const body = JSON.parse(calls[0]!.init.body as string) as Record<string, unknown>;
     assert.equal(body.language_code, forced);
   }

@@ -72,4 +72,25 @@ test('persona version changes with memory, a name or the day, but not within the
   assert.notEqual(personaVersion(d, { companionName: 'Vivi', userName: '小亮' }, morning), v1);
   writeFileSync(join(d, 'MEMORY.md'), '- 叫阿亮');
   assert.notEqual(personaVersion(d, { companionName: 'Vivi', userName: '阿亮' }, morning), v1);
+  // So is the reply language.
+  assert.notEqual(personaVersion(d, { companionName: 'Vivi', userName: '阿亮', language: 'en' }, morning), v1);
+});
+
+test('a held reply language is stated against the Chinese prompt', () => {
+  const english = buildSystemPrompt(dir(), { companionName: 'Vivi', userName: '阿亮', language: 'en', now: new Date() });
+  assert.match(english, /Write every single message in English/);
+  assert.match(english, /do not switch to match them/);
+  // Last, after the persona and the clock, where the Chinese pull is strongest.
+  assert.ok(english.indexOf('# Language') > english.indexOf('# 现在'));
+  const chinese = buildSystemPrompt(dir(), { companionName: 'Vivi', userName: '阿亮', language: 'zh', now: new Date() });
+  assert.match(chinese, /Reply in Chinese only/);
+});
+
+test('auto says nothing about language, leaving her to mirror the user', () => {
+  for (const language of [undefined, 'auto'] as const) {
+    const prompt = buildSystemPrompt(dir(), { companionName: 'Vivi', userName: '', language, now: new Date() });
+    assert.doesNotMatch(prompt, /# Language/);
+    // The rest of the speaking rules are untouched.
+    assert.match(prompt, /send_voice/);
+  }
 });

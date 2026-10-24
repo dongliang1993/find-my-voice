@@ -1,14 +1,16 @@
 import { useEffect, useLayoutEffect, useRef } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import type { ChatMessage, CompanionStatus, InitiativeKind } from '@shared/protocol';
+import type { ChatMessage, CompanionStatus, InitiativeKind, Letter } from '@shared/protocol';
 import { Avatar } from '@/components/Identity';
 import { VoiceBubble } from '@/components/VoiceBubble';
+import { LetterCard } from '@/features/letter/Inbox';
+import { plainText } from '@shared/plain';
 import { cn } from '@/lib/utils';
 
 const GAP_MS = 10 * 60 * 1000;
 const EASE_OUT = [0.22, 1, 0.36, 1] as const;
 /** Shown next to her name when she spoke first. */
-const INITIATIVE_LABEL: Record<InitiativeKind, string> = { followup: 'Remembered', morning: 'Morning', miss_you: 'Missed you' };
+const INITIATIVE_LABEL: Record<InitiativeKind, string> = { followup: 'Remembered', echo: 'Still thinking', rhythm: 'Checking in' };
 
 /** The empty screen speaks to the hour, not always to the night. */
 const greeting = () => {
@@ -23,10 +25,14 @@ const dayLabel = (iso: string) => {
   return date.toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false });
 };
 
-type Props = { messages: ChatMessage[]; status: CompanionStatus; name: string };
+type Props = {
+  messages: ChatMessage[]; status: CompanionStatus; name: string;
+  /** Her letters, for the envelopes in the thread; opening one shows the whole letter. */
+  letters?: Letter[];
+  onOpenLetter?: (letter: Letter) => void;
+};
 
-export function MessageList({ messages, status, name }: Props) {
-  const end = useRef<HTMLDivElement>(null);
+export function MessageList({ messages, status, name, letters = [], onOpenLetter }: Props) {
   const scroller = useRef<HTMLDivElement>(null);
   const stuck = useRef(true);
 
@@ -38,8 +44,11 @@ export function MessageList({ messages, status, name }: Props) {
     el.addEventListener('scroll', onScroll, { passive: true });
     return () => el.removeEventListener('scroll', onScroll);
   }, []);
+  // Its own scroll only: scrollIntoView would also scroll every clipped box around
+  // the thread, sliding the panel's tabs out of sight.
   useLayoutEffect(() => {
-    if (stuck.current) end.current?.scrollIntoView({ block: 'end' });
+    const el = scroller.current;
+    if (stuck.current && el) el.scrollTop = el.scrollHeight;
   }, [messages, status]);
 
   const last = messages.at(-1);
@@ -87,7 +96,9 @@ export function MessageList({ messages, status, name }: Props) {
                       )}
                     </p>
                   )}
-                  {message.kind === 'voice' ? <VoiceBubble message={message} /> : (
+                  {message.kind === 'letter' ? (
+                    <LetterCard letter={letters.find(l => l.id === message.letterId)} summary={message.text} onOpen={letter => onOpenLetter?.(letter)} />
+                  ) : message.kind === 'voice' ? <VoiceBubble message={message} /> : (
                     <p className={cn(
                       'wrap-anywhere whitespace-pre-wrap',
                       user
@@ -121,7 +132,6 @@ export function MessageList({ messages, status, name }: Props) {
             </motion.div>
           )}
         </AnimatePresence>
-        <div ref={end} />
       </div>
     </div>
   );

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useSyncExternalStore } from 'react';
 import { audio } from '@/lib/audio';
+import { frames } from '@/lib/frames';
 
 /** Re-renders when what is playing changes. */
 export function usePlaying() {
@@ -16,17 +17,14 @@ export const voiceLevel = { current: 0 };
 export function useVoiceGlow() {
   const level = useRef(0);
   useEffect(() => {
-    let frame = 0;
     const root = document.documentElement;
-    const tick = () => {
+    const loop = frames(() => {
       // Fast attack, slow release: reads as breath rather than flicker.
       const target = audio.level();
       level.current += (target - level.current) * (target > level.current ? 0.5 : 0.08);
       voiceLevel.current = level.current;
       root.style.setProperty('--voice', level.current.toFixed(3));
-      frame = requestAnimationFrame(tick);
-    };
-    frame = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(frame);
+    });
+    return loop.stop;
   }, []);
 }

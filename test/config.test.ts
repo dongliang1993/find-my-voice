@@ -81,6 +81,29 @@ test('migrates the flat pre-provider voice config without losing the key', () =>
   assert.equal(JSON.parse(readFileSync(join(dir, 'config.json'), 'utf8')).voice.volcengine.apiKey, 'old-key');
 });
 
+test('drops the per-provider language keys that moved onto the companion', () => {
+  const dir = tempDir();
+  writeFileSync(join(dir, 'config.json'), JSON.stringify({
+    voice: {
+      provider: 'elevenlabs',
+      elevenlabs: { apiKey: 'ek', voiceId: 'v', model: 'eleven_v4', language: 'en', stability: 0.4, similarity: 0.7 },
+      volcengine: { apiKey: 'vk', voiceId: 'zh_v', resourceId: 'r', language: 'zh' },
+    },
+  }));
+  const settings = loadSettings(dir);
+  assert.equal('language' in settings.voice.elevenlabs, false);
+  assert.equal('language' in settings.voice.volcengine, false);
+  // Sibling fields and the rest of the shape survive.
+  assert.equal(settings.voice.elevenlabs.apiKey, 'ek');
+  assert.equal(settings.voice.elevenlabs.stability, 0.4);
+  assert.equal(settings.voice.volcengine.resourceId, 'r');
+  assert.equal(settings.companion.language, 'auto');
+  // Written back, so the dropped keys are gone from disk.
+  const stored = JSON.parse(readFileSync(join(dir, 'config.json'), 'utf8')) as { voice: Record<string, Record<string, unknown>> };
+  assert.equal('language' in stored.voice.elevenlabs!, false);
+  assert.equal('language' in stored.voice.volcengine!, false);
+});
+
 test('the browser patch schema applies no defaults, so a partial save resets nothing', () => {
   const dir = tempDir();
   updateSettings(dir, { voice: { provider: 'fish', volcengine: { apiKey: 'volc' } }, brain: { model: 'm1' } });

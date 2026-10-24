@@ -1,11 +1,15 @@
+import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { loadSettings, resolveInitiative, updateSettings, type Settings, type SettingsPatch } from './config.js';
 import { readClaudeSettings, resolveBrainAuth } from './brain/auth.js';
 import { ClaudeBrain } from './brain/claude.js';
+import { ScriptBrain, type ScriptStep } from './brain/scripted.js';
 import type { Brain } from './brain/types.js';
 import { ChatService } from './chat/service.js';
 import { ChatStore } from './chat/store.js';
 import { InitiativeScheduler } from './initiative/scheduler.js';
+import { buildJudgePrompt } from './initiative/judge.js';
+import { judgeWithClaude } from './initiative/claude.js';
 import { notifySystem } from './initiative/notify.js';
 import { extractWithClaude } from './memory/claude.js';
 import { MemoryExtractor } from './memory/extractor.js';
@@ -43,19 +47,19 @@ export class App {
       audioDir: resolve(dataDir, 'audio'),
       voice: () => activeVoice(this.settings.voice),
       speechRate: () => this.settings.voice.speechRate,
-      // Only providers that accept a language hint consume this; the rest ignore it.
-      language: () => {
-        const voice = this.settings.voice;
-        return voice.provider === 'elevenlabs' ? voice.elevenlabs.language
-          : voice.provider === 'volcengine' ? voice.volcengine.language
-            : 'auto';
-      },
+      // The reply language is also the reading language: the speech is whatever
+      // she just wrote. `auto` leaves it to the provider to infer from the text.
+      language: () => this.settings.companion.language,
     });
     this.chat = new ChatService({
       store: this.store, voice: this.voice, onLog: log,
       createBrain: ({ fresh }) => this.createBrain(fresh),
-      promptVersion: () => personaVersion(this.dataDir,
-        { companionName: this.settings.companion.name, userName: this.settings.companion.userName }, new Date()),
+      signature: () => this.settings.companion.name,
+      promptVersion: () => personaVersion(this.dataDir, {
+        companionName: this.settings.companion.name,
+        userName: this.settings.companion.userName,
+        language: this.settings.companion.language,
+      }, new Date()),
     });
     this.memory = new MemoryExtractor({
       store: this.store, dataDir,
@@ -68,10 +72,19 @@ export class App {
     this.initiative = new InitiativeScheduler({
       store: this.store, chat: this.chat, memory: this.memory, onLog: line => this.log(`[initiative] ${line}`),
       // The gate stays a pure consumer of knobs; the mode→knobs mapping lives in config.
-      rules: () => resolveInitiative(this.settings.initiative, this.settings.companion.rhythm),
+      rules: ({ unanswered = 0 } = {}) => resolveInitiative(this.settings.initiative, this.settings.companion.rhythm, unanswered),
       // null when no page is connected at all — then the OS notification is the
       // delivery, so she still speaks. False means a tab is there but hidden.
       watching: () => this.presence.size === 0 ? null : [...this.presence.values()].some(Boolean),
+      // No persona in the room for this one: it decides whether there is a reason
+      // at all, so a companion who enjoys talking cannot talk itself into yes.
+      judge: async (candidate, recent) => {
+        const auth = this.brainAuth();
+        if (auth.source === 'none') return { speak: false, subject: '', reason: 'no model' };
+        return judgeWithClaude(auth, dataDir, buildJudgePrompt({
+          candidate, recent, companionName: this.settings.companion.name, now: new Date(),
+        }), line => this.log(`[judge] ${line.trimEnd()}`));
+      },
       notify: text => {
         // A connected page handles it: on screen it is seen, in a background tab it raises a
         // browser notification. Ring the OS only when no page is connected at all.
@@ -88,6 +101,9 @@ export class App {
   }
 
   private createBrain(fresh: boolean): Brain {
+    // Development only: a scripted brain, so the page can be driven without a model.
+    const script = process.env.FMV_BRAIN_SCRIPT;
+    if (script) return new ScriptBrain(JSON.parse(readFileSync(script, 'utf8')) as ScriptStep[][], line => this.log(`[script] ${line}`));
     const auth = this.brainAuth();
     if (auth.source === 'none') {
       throw new DomainError('BRAIN_NOT_CONFIGURED', '还没有可用的模型凭证，请在设置里填写 API Key。');
@@ -96,7 +112,7 @@ export class App {
       auth, dataDir: this.dataDir,
       systemPrompt: buildSystemPrompt(this.dataDir, {
         companionName: this.settings.companion.name, userName: this.settings.companion.userName,
-        comfort: this.settings.companion.comfort, now: new Date(),
+        comfort: this.settings.companion.comfort, language: this.settings.companion.language, now: new Date(),
       }),
       // A fresh brain forgets the stored id so a lost session is never resumed again.
       resumeSessionId: fresh ? null : this.store.getState(SESSION_KEY),
@@ -110,7 +126,7 @@ export class App {
     const { voice, companion } = this.settings;
     return {
       companionName: companion.name,
-      brain: { source: auth.source, ready: auth.source !== 'none', model: auth.model ?? null },
+      brain: { source: auth.source, ready: auth.source !== 'none' || Boolean(process.env.FMV_BRAIN_SCRIPT), model: auth.model ?? null },
       voice: { provider: voice.provider, ready: voiceReady(voice) },
       listen: { ready: listenReady(voice) },
     };

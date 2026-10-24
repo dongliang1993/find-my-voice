@@ -7,9 +7,12 @@
     <title>Find My Voice</title>
     <script>
       // Same rules as src/lib/theme.ts, before first paint, so a cream page never flashes black.
+      // The loading gate comes first and follows her hour: dark from 19:40 to 3:24, where
+      // the room's colour in features/stage/ambient.ts crosses into dark.
       try {
         var t = localStorage.getItem('fmv-theme') === 'radio' ? 'radio' : 'her';
-        var d = t === 'radio' || matchMedia('(prefers-color-scheme: dark)').matches;
+        var now = new Date(), h = now.getHours() + now.getMinutes() / 60;
+        var d = t === 'radio' || h >= 19 + 40 / 60 || h < 3 + 24 / 60;
         document.documentElement.dataset.theme = t;
         if (d) document.documentElement.classList.add('dark');
       } catch (e) {}

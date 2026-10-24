@@ -23,7 +23,25 @@ export const SCRIPT = {
   proposeIntro: "I've got one.",
   proposeFallback: "(Can't think of a good one. You pick — I'm not fussy.)",
   finalEcho: (alias: string, name: string) => `Then that's settled: I'm ${name}, you're ${alias}. You can change it anytime, but I'll remember what you told me.`,
+  /** Her first line on the stage: the hour they said they want company, and their name. */
+  arrival: (alias: string, rhythm: Rhythm) => `${ARRIVAL_WHEN[rhythm]}, come find me${alias ? `, ${alias}` : ''}.`,
 } as const;
+
+const ARRIVAL_WHEN: Record<Rhythm, string> = {
+  morning: 'In the morning, when you want to talk',
+  commute: 'On your way home, when you want to talk',
+  night: 'Late at night, when you want to talk',
+  anytime: 'Whenever you want to talk',
+};
+
+/** What she says once when someone stalls, and only then. Fixed audio, so they never carry a name. */
+export const HINTS = {
+  open: { key: 'hint_open', text: 'You can just say it, or type it. Either is fine.' },
+  choice: { key: 'hint_choice', text: "Whichever feels closest. There's no wrong one." },
+  notes: { key: 'hint_notes', text: "It can be something small. Or skip it, that's fine too." },
+  stage: { key: 'hint_stage', text: "You can just say it, or type. I'm right here." },
+} as const;
+export type Hint = (typeof HINTS)[keyof typeof HINTS];
 
 /**
  * Pre-generated with the configured voice (scripts/pregen-onboarding.mjs). A
@@ -39,6 +57,7 @@ export const FIXED: { key: string; text: string }[] = [
   { key: 'name_ask', text: SCRIPT.nameAsk },
   { key: 'name_herself', text: SCRIPT.nameHerself },
   { key: 'propose_intro', text: SCRIPT.proposeIntro },
+  ...Object.values(HINTS),
 ];
 
 /**

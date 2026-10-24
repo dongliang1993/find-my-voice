@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { motion } from 'motion/react';
 import { CARD, CARD_SURFACE, CENTRE, CORAL, CORAL_CLOSED, CORAL_SURFACE, MAT, PANEL, SCREEN } from '@/features/onboarding/layout';
+import { useAmbientTheme } from '@/features/stage/ambient';
 import { cn } from '@/lib/utils';
 import { useGlobal } from '@/store/global';
 
@@ -82,12 +83,15 @@ function LoadingLine() {
 export function LoadingGate() {
   const ready = useGlobal(store => store.ready);
   const started = useRef(performance.now());
+  const screen = useRef<HTMLDivElement>(null);
+  // Already in the hour's light, so neither the first meeting nor the stage under it changes the weather.
+  useAmbientTheme(screen, 'calm', { page: true });
 
   // On the render where `ready` flips: how much of the draw is left to wait for.
   const closing = ready ? Math.max(0, DRAW_MS - (performance.now() - started.current)) : DRAW_MS;
 
   return (
-    <motion.div
+    <motion.div ref={screen}
       role="status"
       aria-label="正在启动"
       // The delay is the line finishing plus a beat to read it, not dead time.

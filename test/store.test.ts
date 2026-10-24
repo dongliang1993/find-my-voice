@@ -72,9 +72,9 @@ test('reports when each side last spoke', () => {
 
 test('initiative messages are marked and counted per day', () => {
   const s = store();
-  s.append({ role: 'assistant', kind: 'text', text: '早', initiative: 'morning' });
+  s.append({ role: 'assistant', kind: 'text', text: '早', initiative: 'rhythm' });
   s.append({ role: 'assistant', kind: 'text', text: '普通回复' });
-  assert.equal(s.recent().find(m => m.text === '早')?.initiative, 'morning');
+  assert.equal(s.recent().find(m => m.text === '早')?.initiative, 'rhythm');
   assert.equal(s.recent().find(m => m.text === '普通回复')?.initiative, null);
   assert.equal(s.initiativesSince(new Date(Date.now() - 60_000)), 1);
   assert.equal(s.initiativesSince(new Date(Date.now() + 60_000)), 0);
@@ -114,4 +114,80 @@ test('a cursor pointing at a vanished message starts over instead of reading not
   const s = store();
   s.append({ role: 'user', kind: 'text', text: 'a' });
   assert.deepEqual(s.after('gone-id').map(m => m.text), ['a']);
+});
+
+test('greetings stored as "morning" read back as "rhythm" after an upgrade', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'fmv-store-'));
+  const before = new ChatStore(dir);
+  // What an older version wrote, before the greeting could fall at any hour.
+  before.append({ role: 'assistant', kind: 'text', text: '早', initiative: 'morning' as never });
+  const after = new ChatStore(dir);
+  assert.equal(after.recent()[0]?.initiative, 'rhythm');
+});
+
+test('days talked counts distinct days the user spoke, not messages or her turns', () => {
+  let now = new Date(2026, 9, 20, 10);
+  const s = new ChatStore(mkdtempSync(join(tmpdir(), 'fmv-store-')), () => now);
+  s.append({ role: 'user', kind: 'text', text: 'a' });
+  s.append({ role: 'user', kind: 'text', text: 'b' });
+  now = new Date(2026, 9, 21, 10);
+  s.append({ role: 'assistant', kind: 'text', text: '她自己说的', initiative: 'rhythm' });
+  now = new Date(2026, 9, 22, 23);
+  s.append({ role: 'user', kind: 'text', text: 'c' });
+  assert.equal(s.daysTalked(), 2);
+});
+
+// ---- letters ----
+
+test('a letter is written, finished, opened once, and listed newest first', () => {
+  let now = new Date(2026, 9, 24, 11, 20);
+  const s = new ChatStore(mkdtempSync(join(tmpdir(), 'fmv-store-')), () => now);
+  const first = s.createLetter({ signature: 'Vivi' });
+  assert.equal(first.status, 'writing');
+  assert.equal(first.openedAt, null);
+  s.writeLetter(first.id, { title: '下雨天', blocks: [{ id: 'b1', type: 'heading', text: '电影' }], status: 'done' });
+  now = new Date(2026, 9, 24, 12, 0);
+  const second = s.createLetter({ signature: 'Vivi' });
+
+  assert.deepEqual(s.letters().map(l => l.id), [second.id, first.id]);
+  now = new Date(2026, 9, 24, 12, 5);
+  const opened = s.openLetter(first.id)!;
+  now = new Date(2026, 9, 24, 13, 0);
+  assert.equal(s.openLetter(first.id)!.openedAt, opened.openedAt, 'the first opening is the one kept');
+  assert.equal(s.letter(first.id)?.title, '下雨天');
+});
+
+test('an edit is a new version, and the old blocks are kept as history', () => {
+  const s = store();
+  const letter = s.createLetter({ signature: 'Vivi' });
+  s.writeLetter(letter.id, { title: 't', blocks: [{ id: 'b1', type: 'heading', text: '旧' }], status: 'done' });
+  const revised = s.reviseLetter(letter.id, [{ id: 'b1', type: 'heading', text: '新' }]);
+  assert.equal(revised.version, 2);
+  assert.equal(revised.blocks[0]?.type === 'heading' && revised.blocks[0].text, '新');
+  const [old] = s.letterHistory(letter.id);
+  assert.equal(old?.version, 1);
+  assert.equal(old?.blocks[0]?.type === 'heading' && old.blocks[0].text, '旧');
+});
+
+test('a deleted letter leaves the inbox; a letter message keeps pointing at it', () => {
+  const s = store();
+  const letter = s.createLetter({ signature: 'Vivi' });
+  const message = s.append({ role: 'assistant', kind: 'letter', text: '（写了一封信「t」）', letterId: letter.id });
+  s.linkLetter(letter.id, message.id);
+  assert.equal(s.recent().at(-1)?.letterId, letter.id);
+  assert.equal(s.letterMessageId(letter.id), message.id);
+  assert.ok(s.deleteLetter(letter.id));
+  assert.equal(s.letter(letter.id), null);
+  assert.equal(s.letters().length, 0);
+  assert.equal(s.deleteLetter(letter.id), false, 'already gone');
+});
+
+test('a letter still being written when the process died comes back broken, with what it had', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'fmv-store-'));
+  const before = new ChatStore(dir);
+  const letter = before.createLetter({ signature: 'Vivi' });
+  before.writeLetter(letter.id, { title: '半封', blocks: [{ id: 'b1', type: 'heading', text: '电影' }] });
+  const after = new ChatStore(dir);
+  assert.equal(after.letter(letter.id)?.status, 'broken');
+  assert.equal(after.letter(letter.id)?.blocks.length, 1);
 });

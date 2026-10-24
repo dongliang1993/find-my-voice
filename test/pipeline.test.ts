@@ -22,10 +22,10 @@ class FakeTts implements TtsProvider {
   }
 }
 
-const setup = (tts: TtsProvider) => {
+const setup = (tts: TtsProvider, language?: () => 'auto' | 'zh' | 'en') => {
   const dir = mkdtempSync(join(tmpdir(), 'fmv-voice-'));
   const chunks: Buffer[] = [];
-  const pipeline = new VoicePipeline({ provider: tts, audioDir: dir, voice: () => voice, speechRate: () => 0 });
+  const pipeline = new VoicePipeline({ provider: tts, audioDir: dir, voice: () => voice, speechRate: () => 0, language });
   return { dir, chunks, pipeline };
 };
 
@@ -40,6 +40,28 @@ test('synthesizes sentence by sentence and streams every chunk in order', async 
   const wav = readFileSync(join(dir, 'a1.wav'));
   assert.equal(wav.subarray(0, 4).toString(), 'RIFF');
   assert.equal(wav.length, 44 + 4800);
+});
+
+test('passes a held language through and sends nothing for auto', async () => {
+  const seen: (string | undefined)[] = [];
+  class Recording extends FakeTts {
+    override async synthesize(input: SynthesisInput, options: SynthesisOptions = {}) {
+      seen.push(input.language);
+      return super.synthesize(input, options);
+    }
+  }
+  await setup(new Recording(), () => 'en').pipeline.speak('b1', 'hello there', { onChunk: () => {} });
+  await setup(new Recording(), () => 'auto').pipeline.speak('b2', 'hello there', { onChunk: () => {} });
+  assert.deepEqual(seen, ['en', undefined]);
+});
+
+test('reports every sentence with where it starts, so the caption can follow the voice', async () => {
+  const lines: { text: string; startsAt: number }[] = [];
+  const { pipeline } = setup(new FakeTts());
+  await pipeline.speak('a4', '今天真的发生了好多事情呢。我早上起来发现下雨了！', { onChunk: () => {}, onLine: line => lines.push(line) });
+  assert.deepEqual(lines.map(line => line.text), ['今天真的发生了好多事情呢。', '我早上起来发现下雨了！']);
+  // Each call emits 0.1 s of audio, so the second sentence starts at 0.1 s.
+  assert.ok(Math.abs(lines[1]!.startsAt - 0.1) < 1e-9);
 });
 
 test('splits long speech into several TTS requests', async () => {

@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { voiceLevel } from '@/hooks/useVoice';
 import { useTheme } from '@/lib/theme';
+import { frames } from '@/lib/frames';
 import { cn } from '@/lib/utils';
 
 const STRANDS = 3;
@@ -46,6 +47,7 @@ type Props = {
    * How much of the wave survives silence, 0..1. At 1 the coil keeps its full
    * height when nobody is talking; lower it on a stage where silence is the
    * normal state and a full wave reads as activity that is not happening.
+   * A change eases over a second or so rather than snapping.
    */
   rest?: number;
   className?: string;
@@ -75,13 +77,18 @@ export function Spiral({ thinking, stage = 'awake', tone, weight = 1 / 40, label
   const shown = useRef<number | null>(null);
   const word = useRef(label);
   const ear = useRef(listening);
+  const restTarget = useRef(rest);
+  restTarget.current = rest;
+  /** Restarts a loop that settled on a still frame (reduced motion) or paused while hidden. */
+  const wake = useRef<() => void>(() => {});
   const { dark } = useTheme();
 
   if (label && shown.current === null) shown.current = performance.now();
   word.current = label;
-  useEffect(() => { busy.current = thinking; }, [thinking]);
-  useEffect(() => { current.current = stage; }, [stage]);
-  useEffect(() => { ear.current = listening; }, [listening]);
+  useEffect(() => { busy.current = thinking; wake.current(); }, [thinking]);
+  useEffect(() => { current.current = stage; wake.current(); }, [stage]);
+  useEffect(() => { ear.current = listening; wake.current(); }, [listening]);
+  useEffect(() => { wake.current(); }, [rest]);
   useEffect(() => {
     if (!canvas.current) return;
     const style = getComputedStyle(canvas.current);
@@ -95,17 +102,25 @@ export function Spiral({ thinking, stage = 'awake', tone, weight = 1 / 40, label
     const ctx = el?.getContext('2d');
     if (!el || !ctx) return;
     const still = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    let frame = 0;
     let phase = 0;
     let last = performance.now();
     let open = 0;
     /** 0..1, eased: how far she has drawn in to listen. */
     let hush = 0;
+    let calm = restTarget.current;
 
     const draw = (now: number) => {
       const dpr = window.devicePixelRatio || 1;
-      const size = el.clientWidth;
-      if (el.width !== Math.round(size * dpr)) { el.width = el.height = Math.round(size * dpr); }
+      // Wide on the stage: the wave lies along the panel, so the box is a
+      // rectangle. `size` is the short side — the coil's own scale — and the
+      // wave runs the width at the same weight.
+      const size = Math.min(el.clientWidth, el.clientHeight);
+      const width = el.clientWidth;
+      if (el.width !== Math.round(width * dpr) || el.height !== Math.round(size * dpr)) {
+        el.width = Math.round(width * dpr);
+        el.height = Math.round(size * dpr);
+      }
+      // Clamped, so a loop resumed after the window was hidden does not jump.
       const dt = Math.min(0.05, (now - last) / 1000);
       last = now;
 
@@ -121,19 +136,25 @@ export function Spiral({ thinking, stage = 'awake', tone, weight = 1 / 40, label
       const level = voiceLevel.current;
       open += (level - open) * (level > open ? 0.3 : 0.05);
       // Silence leaves a flat line where `rest` is low, and a full wave where it is 1.
-      const quiet = rest + (1 - rest) * Math.min(1, open * 4);
+      calm += (restTarget.current - calm) * (still ? 1 : 0.04);
+      const quiet = calm + (1 - calm) * Math.min(1, open * 4);
       // Listening, she holds still.
       phase += dt * (1 - hush) * (0.8 + (busy.current ? 2.2 : 0) + open * 7);
       const breath = still ? 1 : 1 + (0.05 + 0.05 * hush) * Math.sin(now / (1100 + 500 * hush));
 
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      ctx.clearRect(0, 0, size, size);
+      ctx.clearRect(0, 0, width, size);
+      // The centre of the box, horizontally: the coil's middle, square or not.
+      const mid = width / 2;
       ctx.lineCap = 'round';
       ctx.lineJoin = 'round';
       ctx.strokeStyle = stroke.current;
       const [sinT, cosT] = [Math.sin(TILT), Math.cos(TILT)];
-      const half = size * 0.4;
-      const track = 2 * half;
+      // The wave runs along the box's width; its height stays scaled to the
+      // short side. On a square (the first meeting) the two are the same.
+      const halfW = width * 0.4;
+      const halfH = size * 0.4;
+      const track = 2 * halfW;
 
       // How much of the line exists yet: none, growing out from the middle, or all of it.
       const extent = current.current === 'asleep' ? 0 : current.current === 'awake' ? 1 : unfold;
@@ -148,7 +169,7 @@ export function Spiral({ thinking, stage = 'awake', tone, weight = 1 / 40, label
         ctx.save();
         ctx.globalAlpha = appear * (1 - smoothstep(0.55, 1, unfold));
         ctx.fillStyle = stroke.current;
-        ctx.translate(size / 2, size / 2 + (still ? 0 : (1 - appear) * 8));
+        ctx.translate(mid, size / 2 + (still ? 0 : (1 - appear) * 8));
         ctx.scale(1 + (stretchTo - 1) * unfold, 1 - 0.92 * unfold);
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
@@ -171,8 +192,8 @@ export function Spiral({ thinking, stage = 'awake', tone, weight = 1 / 40, label
             const r = coil * (0.22 - 0.1 * hush + open * (0.2 + 0.1 * hush)) * quiet * breath * Math.sin(Math.PI * u) ** 0.7;
             const a = u * TURNS * Math.PI * 2 + phase + offset;
             const py = Math.sin(a) * r * cosT - Math.cos(a) * r * sinT;
-            if (i === from) ctx.moveTo(size / 2 + x * half, size / 2 + py * half);
-            else ctx.lineTo(size / 2 + x * half, size / 2 + py * half);
+            if (i === from) ctx.moveTo(mid + x * halfW, size / 2 + py * halfH);
+            else ctx.lineTo(mid + x * halfW, size / 2 + py * halfH);
           }
           ctx.globalAlpha = (current.current === 'awake' ? 1 : smoothstep(0.25, 1, unfold)) * (s === 0 ? 1 : (0.55 - s * 0.12) * coil);
           ctx.lineWidth = Math.max(1, size * weight) * (s === 0 ? 1.15 : 0.8);
@@ -180,11 +201,12 @@ export function Spiral({ thinking, stage = 'awake', tone, weight = 1 / 40, label
         }
       }
 
-      if (!still || coil < 1 || current.current === 'drawing' || ear.current) frame = requestAnimationFrame(draw);
+      return !still || coil < 1 || current.current === 'drawing' || ear.current;
     };
-    frame = requestAnimationFrame(draw);
-    return () => cancelAnimationFrame(frame);
-  }, [weight, rest]);
+    const loop = frames(draw);
+    wake.current = loop.wake;
+    return () => { loop.stop(); wake.current = () => {}; };
+  }, [weight]);
 
   return <canvas ref={canvas} aria-hidden="true" className={cn('spiral-glow flex-none', className)} />;
 }

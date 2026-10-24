@@ -14,17 +14,17 @@ test('each mode resolves to its own knobs', () => {
   const off = resolveInitiative({ ...settings.initiative, mode: 'off' });
   assert.equal(off.enabled, false);
   assert.equal(off.dailyLimit, 0);
-  assert.equal(off.morningStart, null);
+  assert.equal(off.rhythmStart, null);
 
   const occasional = resolveInitiative({ ...settings.initiative, mode: 'occasional' });
   assert.equal(occasional.enabled, true);
   assert.equal(occasional.dailyLimit, 2);
-  assert.equal(occasional.morningStart, null);
+  assert.equal(occasional.rhythmStart, null);
 
   const often = resolveInitiative({ ...settings.initiative, mode: 'often' });
   assert.equal(often.enabled, true);
-  assert.equal(often.morningStart, 8);
-  assert.equal(often.morningEnd, 11);
+  assert.equal(often.rhythmStart, 8);
+  assert.equal(often.rhythmEnd, 11);
 });
 
 test('quiet hours are shared by every mode that is on', () => {
@@ -99,4 +99,17 @@ test('companion userName is stored and patchable', () => {
   }));
   const settings = loadSettings(dir);
   assert.equal(settings.companion.userName, '阿梁');
+});
+
+test('the mode is a ceiling: being left hanging only ever makes her quieter', () => {
+  const dir = tempDir();
+  const settings = loadSettings(dir);
+  const base = resolveInitiative({ ...settings.initiative, mode: 'often' });
+  assert.equal(base.followupsOnly, undefined, 'nothing unresolved: no restriction');
+  const two = resolveInitiative({ ...settings.initiative, mode: 'often' }, 'anytime', 2);
+  assert.equal(two.followupsOnly, true, 'two unanswered: only something remembered');
+  assert.equal(two.rhythmStart, base.rhythmStart, 'the mode itself is untouched');
+  const three = resolveInitiative({ ...settings.initiative, mode: 'often' }, 'anytime', 3);
+  assert.equal(three.silent, true, 'three unanswered: nothing at all');
+  assert.equal(resolveInitiative({ ...settings.initiative, mode: 'off' }, 'anytime', 3).silent, undefined, 'off is already silent');
 });

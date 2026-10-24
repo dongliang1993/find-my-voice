@@ -12,9 +12,6 @@ import { ElevenLabsProvider } from '../src/server/voice/eleven.ts';
 
 const OUT_DIR = resolve(import.meta.dirname, '../web/public/onboarding');
 
-/** Every line is English now; the map stays so a future Chinese line has somewhere to say so. */
-const LANGUAGE = {};
-
 /**
  * The fixed lines, duplicated here on purpose: this script cannot import the
  * web module (vite aliases do not resolve under node). When either copy
@@ -29,6 +26,10 @@ const LINES = {
   name_ask: 'Last thing: what do you want to call me?',
   name_herself: 'Or I could pick one myself.',
   propose_intro: "I've got one.",
+  hint_open: 'You can just say it, or type it. Either is fine.',
+  hint_choice: "Whichever feels closest. There's no wrong one.",
+  hint_notes: "It can be something small. Or skip it, that's fine too.",
+  hint_stage: "You can just say it, or type. I'm right here.",
 };
 
 const settings = loadSettings();
@@ -55,7 +56,7 @@ for (const [key, text] of Object.entries(LINES)) {
   if (only.size && !only.has(key)) continue;
   // synthesize() always archives as WAV; PCM streaming is the live path only.
   const { audio, mime } = await provider.synthesize(
-    { text, voice: { id: eleven.voiceId, resourceId: '' }, speechRate: 0, language: LANGUAGE[key] ?? eleven.language },
+    { text, voice: { id: eleven.voiceId, resourceId: '' }, speechRate: 0, language: eleven.language },
   );
   writeFileSync(resolve(OUT_DIR, `${key}.wav`), audio);
   console.log(`${key}.wav  ${(audio.length / 1024).toFixed(0)} KiB  ${mime}`);

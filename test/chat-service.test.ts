@@ -217,11 +217,11 @@ test('she can choose silence: PASS stores and shows nothing', async () => {
 
 test('a voice she sends unprompted is tagged too', async () => {
   const { store, service } = setup(new ScriptedBrain([{ type: 'voice', text: '早安呀', emotion: '温柔' }]));
-  await service.speakUp({ kind: 'morning', reason: '早上' });
+  await service.speakUp({ kind: 'rhythm', reason: '早上' });
   await settle();
   const [voice] = store.recent();
   assert.equal(voice?.kind, 'voice');
-  assert.equal(voice?.initiative, 'morning');
+  assert.equal(voice?.initiative, 'rhythm');
 });
 
 test('never speaks up while a reply is in progress', async () => {
@@ -290,4 +290,25 @@ test('speakUp reports the ids of what she said', async () => {
   assert.equal(result.outcome, 'spoke');
   assert.equal(ids[0]?.length, 1);
   assert.equal(result.messages[0]?.text, '嗨');
+});
+
+test('the guardrails travel with every unprompted opening', async () => {
+  const brain = new ScriptedBrain([{ type: 'text_delta', text: 'PA' }, { type: 'text_delta', text: 'SS' }]);
+  const { service } = setup(brain);
+  await service.speakUp(candidate);
+  const prompt = brain.received[0]!;
+  assert.match(prompt, /不要让对方内疚/);
+  assert.match(prompt, /现实生活/);
+});
+
+test('markup she streams is stored and spoken without it', async () => {
+  const { store, service } = setup(new ScriptedBrain([
+    { type: 'text_delta', text: '<p>下雨天' },
+    { type: 'text_delta', text: '推荐**《花样年华》**</p>' },
+    { type: 'voice', text: '## 要不要听点爵士？', emotion: null },
+  ]));
+  await service.send(randomUUID(), '推荐点电影');
+  const [, text, voice] = store.recent();
+  assert.equal(text?.text, '下雨天推荐《花样年华》');
+  assert.equal(voice?.text, '要不要听点爵士？');
 });

@@ -1,19 +1,26 @@
-import { useEffect, useRef, type RefObject } from 'react';
+import { useLayoutEffect, useRef, type RefObject } from 'react';
+import { holdDark } from '@/lib/theme';
 
 export type Mood = 'calm' | 'happy' | 'longing' | 'low';
 
 interface Keyframe { hour: number; her: string; base: string }
 
 /**
- * The light through the day, in five stops. Night is nearly brown, afternoon
- * is the coral's most saturated, and the two are far enough apart that the
- * change is felt rather than noticed.
+ * The light through the day. Night is nearly brown, afternoon is the coral's
+ * most saturated, and the two are far enough apart that the change is felt
+ * rather than noticed. Dusk goes down through peach and terracotta: straight
+ * from cream to brown, the room passed through grey around seven.
+ *
+ * index.html repeats where the room crosses into dark (19:40 to 3:24) for the
+ * first paint; moving a base stop moves those times.
  */
 const KEYFRAMES: Keyframe[] = [
   { hour: 1, her: '#7A3A33', base: '#1F1513' },
   { hour: 6, her: '#D9644A', base: '#F7EEE6' },
   { hour: 11, her: '#D2513F', base: '#F5ECE3' },
   { hour: 17.5, her: '#D9493A', base: '#F6E6DA' },
+  { hour: 19, her: '#D44A38', base: '#F0C9A6' },
+  { hour: 20, her: '#B4473A', base: '#A85A40' },
   { hour: 21, her: '#9E4136', base: '#2B1D1A' },
 ];
 
@@ -93,15 +100,21 @@ export function applyMood(her: RGB, mood: Mood): RGB {
  * Writes the ambient palette onto an element: `--her` (the coral), `--base`
  * (the page) and `--ink`, plus `data-dark`. Re-read every minute; the CSS
  * transition is what makes a change of hour or mood a slow fade rather than a
- * step. `now` pins the clock for previewing a time of day.
+ * step. Written before paint, so the first frame is already in the right light.
+ *
+ * `now` pins the clock for previewing a time of day. `page` makes the whole
+ * page follow the hour too, not only the element: the theme's light or dark
+ * tokens then come from the clock instead of the system, for as long as the
+ * element is up.
  */
-export function useAmbientTheme(target: RefObject<HTMLElement | null>, mood: Mood, now?: Date) {
+export function useAmbientTheme(target: RefObject<HTMLElement | null>, mood: Mood, { now, page = false }: { now?: Date; page?: boolean } = {}) {
   const moodRef = useRef(mood);
   moodRef.current = mood;
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const el = target.current;
     if (!el) return;
+    const hold = page ? holdDark() : null;
     const apply = () => {
       const { her, base } = colorsAt(now ?? new Date());
       const dark = luminance(base) < 0.45;
@@ -109,10 +122,10 @@ export function useAmbientTheme(target: RefObject<HTMLElement | null>, mood: Moo
       el.style.setProperty('--base', rgbToHex(base));
       el.style.setProperty('--ink', dark ? INK_DARK : INK_LIGHT);
       el.dataset.dark = dark ? 'true' : 'false';
+      hold?.set(dark);
     };
     apply();
-    if (now) return;
-    const id = window.setInterval(apply, 60_000);
-    return () => window.clearInterval(id);
-  }, [target, mood, now]);
+    const id = now ? undefined : window.setInterval(apply, 60_000);
+    return () => { window.clearInterval(id); hold?.release(); };
+  }, [target, mood, now, page]);
 }

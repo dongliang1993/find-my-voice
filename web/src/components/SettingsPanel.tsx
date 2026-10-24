@@ -1,14 +1,14 @@
 import { useEffect, useState, type SubmitEvent } from 'react';
-import { Loader2 } from 'lucide-react';
+import { Loader2, X } from 'lucide-react';
 import { toast } from 'sonner';
-import type { AppStatus, BrainSource, PublicSettings } from '@shared/protocol';
+import type { AppStatus, BrainSource, PublicSettings, ReplyLanguage } from '@shared/protocol';
 import { api } from '@/lib/api';
 import { Button } from '@/components/ui/button';
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Drawer, DrawerContent, DrawerDescription, DrawerHeader, DrawerTitle } from '@/components/ui/drawer';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Field } from '@/components/settings/Field';
+import { ReplyLanguagePicker } from '@/components/settings/ReplyLanguagePicker';
 import { draftFrom, patchFrom, VoiceSettings, type VoiceDraft } from '@/components/settings/VoiceSettings';
 import { initiativeDraftFrom, initiativePatch, InitiativeSettingsSection, type InitiativeDraft } from '@/components/settings/InitiativeSettings';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
@@ -32,38 +32,51 @@ const SOURCE_LABEL: Record<BrainSource, string> = {
 };
 
 type Tab = 'brain' | 'voice' | 'her';
-type Props = { open: boolean; status: AppStatus; onOpenChange: (open: boolean) => void; onSaved: () => void };
+type Props = { status: AppStatus; onSaved: () => void; onClose: () => void };
 
-/** Dialog on desktop, bottom sheet on phones. */
-export function SettingsPanel({ open, status, onOpenChange, onSaved }: Props) {
+/**
+ * The settings app, on the stage: on desktop it is a window centered in
+ * the room, and on a phone it stays a bottom sheet. Either way it moves
+ * as one record: up from behind, or down and away.
+ */
+export function SettingsPanel({ status, onSaved, onClose }: Props) {
   const desktop = useMediaQuery('(min-width: 640px)');
   const title = '设置';
   const description = '所有凭证只保存在你本机的 ~/.find-my-voice。';
   const body = <SettingsForm status={status} onSaved={onSaved} pane={desktop ? 'dialog' : 'drawer'} />;
 
-  if (desktop) {
+  if (!desktop) {
     return (
-      <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="flex max-h-[75dvh] flex-col overflow-hidden border-border bg-popover p-0 sm:max-w-xl">
-          <DialogHeader className="flex-none p-4">
-            <DialogTitle className="text-xl font-medium tracking-wide text-foreground">{title}</DialogTitle>
-            <DialogDescription>{description}</DialogDescription>
-          </DialogHeader>
+      <Drawer open onOpenChange={() => {}}>
+        <DrawerContent className="flex max-h-[80dvh] flex-col bg-popover data-[vaul-drawer-direction=bottom]:max-h-[80dvh]">
+          <DrawerHeader className="flex-none text-left">
+            <DrawerTitle className="text-xl font-medium tracking-wide text-foreground">{title}</DrawerTitle>
+            <DrawerDescription>{description}</DrawerDescription>
+          </DrawerHeader>
           {body}
-        </DialogContent>
-      </Dialog>
+        </DrawerContent>
+      </Drawer>
     );
   }
+  // Desktop: a window of the room, not a dialog over it — it rises from
+  // behind the dock and folds back down the same way, the record change
+  // doing the moving. It closes by losing the stage; the close button
+  // and a lost click outside are the same door.
   return (
-    <Drawer open={open} onOpenChange={onOpenChange}>
-      <DrawerContent className="flex max-h-[80dvh] flex-col bg-popover data-[vaul-drawer-direction=bottom]:max-h-[80dvh]">
-        <DrawerHeader className="flex-none text-left">
-          <DrawerTitle className="text-xl font-medium tracking-wide text-foreground">{title}</DrawerTitle>
-          <DrawerDescription>{description}</DrawerDescription>
-        </DrawerHeader>
-        {body}
-      </DrawerContent>
-    </Drawer>
+    <div role="dialog" aria-label={title}
+      className="absolute left-1/2 top-1/2 z-30 flex max-h-[min(70dvh,640px)] w-[min(94dvw,560px)] -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-[6px] bg-popover text-popover-foreground shadow-(--panel-shadow) ring-1 ring-hairline">
+      <div className="flex-none p-4 pb-0">
+        <div className="flex items-start justify-between">
+          <h2 className="text-xl font-medium tracking-wide text-foreground">{title}</h2>
+          <button type="button" onClick={onClose} aria-label="关闭"
+            className="-mr-1 -mt-1 text-muted-foreground transition-colors hover:text-foreground">
+            <X className="size-5" />
+          </button>
+        </div>
+        <p className="text-sm text-muted-foreground">{description}</p>
+      </div>
+      {body}
+    </div>
   );
 }
 
@@ -74,12 +87,16 @@ function SettingsForm({ status, onSaved, pane }: { status: AppStatus; onSaved: (
   const [settings, setSettings] = useState<PublicSettings | null>(null);
   const [voice, setVoice] = useState<VoiceDraft>(() => draftFrom(null));
   const [name, setName] = useState(status.companionName);
+  const [language, setLanguage] = useState<ReplyLanguage>(settings?.companion.language ?? 'auto');
   const [initiative, setInitiative] = useState<InitiativeDraft>(() => initiativeDraftFrom(undefined));
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     api.settings()
-      .then(s => { setSettings(s); setVoice(draftFrom(s)); setInitiative(initiativeDraftFrom(s.initiative)); })
+      .then(s => {
+        setSettings(s); setVoice(draftFrom(s)); setLanguage(s.companion.language);
+        setInitiative(initiativeDraftFrom(s.initiative));
+      })
       .catch(() => toast.error('读取设置失败'));
   }, []);
 
@@ -94,7 +111,7 @@ function SettingsForm({ status, onSaved, pane }: { status: AppStatus; onSaved: (
     try {
       const next = tab === 'brain' ? await api.saveSettings({ brain })
         : tab === 'voice' ? await api.saveSettings({ voice: patchFrom(voice) })
-        : await api.saveSettings({ companion: { name }, initiative: initiativePatch(initiative) });
+        : await api.saveSettings({ companion: { name, language }, initiative: initiativePatch(initiative) });
       // Keep the panel truthful even if it stays open: saved keys become "saved", typed secrets clear.
       setSettings(next);
       setVoice(draftFrom(next));
@@ -164,6 +181,7 @@ function SettingsForm({ status, onSaved, pane }: { status: AppStatus; onSaved: (
           <Field id="her-name" label="Ta 的名字">
             <Input id="her-name" value={name} onChange={e => setName(e.target.value)} maxLength={40} required />
           </Field>
+          <ReplyLanguagePicker value={language} onChange={setLanguage} />
           <InitiativeSettingsSection draft={initiative} name={name} onChange={setInitiative} />
         </TabsContent>
       </form>

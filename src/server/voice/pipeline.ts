@@ -2,12 +2,13 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { PCM_SAMPLE_RATE } from '../../shared/protocol.js';
 import { pcmToWav, type TtsProvider, type VoiceRef } from './provider.js';
-import { splitSentences } from './sentences.js';
+import { splitSentences } from '../../shared/sentences.js';
 
 const BYTES_PER_SECOND = PCM_SAMPLE_RATE * 2;
 // Merge short lines so a "嗯。" does not become its own request; cap length so
-// the first sentence starts playing quickly.
-const SPLIT = { minChars: 12, maxChars: 80 };
+// the first sentence starts playing quickly. Her first words wait on the first
+// chunk alone, so that one is cut shorter still, at a comma when it can be.
+const SPLIT = { minChars: 12, maxChars: 80, firstMaxChars: 24 };
 const SAFE_ID = /^[a-zA-Z0-9-]{1,80}$/;
 
 export type VoicePipelineOptions = {
@@ -33,17 +34,28 @@ export class VoicePipeline {
     return resolve(this.options.audioDir, `${audioId}.wav`);
   }
 
-  /** Sentences are synthesized one after another so playback order is guaranteed. */
-  async speak(audioId: string, text: string, { onChunk, signal }: { onChunk: (pcm: Buffer) => void; signal?: AbortSignal }): Promise<SpeakResult> {
+  /**
+   * Sentences are synthesized one after another so playback order is guaranteed.
+   * `onLine` fires once per sentence, right before its audio: the stage gets the
+   * words and where they start in the stream, and follows the clock from there.
+   */
+  async speak(audioId: string, text: string, { onChunk, onLine, signal }: {
+    onChunk: (pcm: Buffer) => void;
+    onLine?: (line: { text: string; startsAt: number }) => void;
+    signal?: AbortSignal;
+  }): Promise<SpeakResult> {
     const path = this.pathFor(audioId);
     const pcm: Buffer[] = [];
+    let bytes = 0;
     for (const sentence of splitSentences(text, SPLIT)) {
       signal?.throwIfAborted();
+      const startsAt = bytes / BYTES_PER_SECOND;
       const language = this.options.language?.() ?? 'auto';
       await this.options.provider.synthesize(
         { text: sentence, voice: this.options.voice(), speechRate: this.options.speechRate(), ...(language === 'auto' ? {} : { language }) },
-        { format: 'pcm', signal, onAudioChunk: async chunk => { pcm.push(chunk); onChunk(chunk); } },
+        { format: 'pcm', signal, onAudioChunk: async chunk => { pcm.push(chunk); bytes += chunk.length; onChunk(chunk); } },
       );
+      onLine?.({ text: sentence, startsAt });
     }
     const audio = Buffer.concat(pcm);
     writeFileSync(path, pcmToWav(audio, PCM_SAMPLE_RATE), { mode: 0o600 });

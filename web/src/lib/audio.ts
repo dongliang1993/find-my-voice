@@ -10,7 +10,8 @@ class AudioEngine {
   private ctx: AudioContext | null = null;
   private analyser: AnalyserNode | null = null;
   private levelData: Uint8Array<ArrayBuffer> | null = null;
-  private streams = new Map<string, { cursor: number; sources: AudioBufferSourceNode[] }>();
+  /** `origin` is the context time the stream's first chunk was scheduled at. */
+  private streams = new Map<string, { cursor: number; origin: number | null; sources: AudioBufferSourceNode[] }>();
   /** Streams the listener stopped mid-way; ids are random, so this never needs pruning in practice. */
   private muted = new Set<string>();
   private clip: { id: string; source: AudioBufferSourceNode; startedAt: number; duration: number } | null = null;
@@ -72,9 +73,10 @@ class AudioEngine {
     const channel = buffer.getChannelData(0);
     for (let i = 0; i < samples.length; i++) channel[i] = samples[i]! / 32768;
 
-    const stream = this.streams.get(audioId) ?? { cursor: 0, sources: [] };
+    const stream = this.streams.get(audioId) ?? { cursor: 0, origin: null, sources: [] };
     // A small lead absorbs network jitter between chunks.
     const start = Math.max(stream.cursor, ctx.currentTime + 0.08);
+    stream.origin ??= start;
     const source = ctx.createBufferSource();
     source.buffer = buffer;
     source.connect(this.analyser!);
@@ -90,6 +92,19 @@ class AudioEngine {
   }
 
   isStreaming(audioId: string) { return Boolean(this.streams.get(audioId)?.sources.length); }
+
+  /**
+   * Seconds of `audioId` that have been heard, for lining captions up with it.
+   * Negative while a stream waits out its jitter lead. Null when it is not
+   * playing (never started, or stopped and forgotten).
+   */
+  heardTime(audioId: string): number | null {
+    if (!this.ctx) return null;
+    if (this.clip?.id === audioId) return this.ctx.currentTime - this.clip.startedAt;
+    const stream = this.streams.get(audioId);
+    if (!stream?.origin) return null;
+    return this.ctx.currentTime - stream.origin;
+  }
 
   /** Starts an archived clip. `ended` settles when it finishes or is stopped. */
   async playClip(id: string, url: string): Promise<{ ended: Promise<void> }> {
@@ -114,6 +129,35 @@ class AudioEngine {
     this.clip = { id, source, startedAt: ctx.currentTime, duration: buffer.duration };
     this.setPlaying(id);
     return { ended };
+  }
+
+  /**
+   * One soft intake of breath while she thinks, so the silence before a reply
+   * reads as her gathering herself rather than the app stalling. Synthesized
+   * noise, below the analyser and outside `playing`, so nothing on screen
+   * mistakes it for her voice.
+   */
+  breath() {
+    const ctx = this.ctx;
+    if (!ctx || ctx.state !== 'running' || this.playing) return;
+    const seconds = 0.7;
+    const buffer = ctx.createBuffer(1, Math.floor(ctx.sampleRate * seconds), ctx.sampleRate);
+    const channel = buffer.getChannelData(0);
+    for (let i = 0; i < channel.length; i++) channel[i] = Math.random() * 2 - 1;
+    const source = ctx.createBufferSource();
+    source.buffer = buffer;
+    // Breath is air, not hiss: a low band, swept up a little as the lungs fill.
+    const band = ctx.createBiquadFilter();
+    band.type = 'bandpass';
+    band.Q.value = 0.8;
+    band.frequency.setValueAtTime(700, ctx.currentTime);
+    band.frequency.linearRampToValueAtTime(1100, ctx.currentTime + seconds);
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(0, ctx.currentTime);
+    gain.gain.linearRampToValueAtTime(0.035, ctx.currentTime + seconds * 0.45);
+    gain.gain.linearRampToValueAtTime(0, ctx.currentTime + seconds);
+    source.connect(band).connect(gain).connect(ctx.destination);
+    source.start();
   }
 
   /** 0..1 progress of the replayed clip, or null. */

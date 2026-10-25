@@ -113,6 +113,9 @@
    "how often" cards with their button), so the line between coral and cream
    never moves from one answer to the next. */
 :root {
+  /* The desktop shell's title bar is transparent, its traffic lights over the page:
+     a narrow window, whose stage reaches the top edge, keeps that strip cream. */
+  --titlebar: 0px;
   --os1-panel-h: min(440px, 58dvh);
   --os1-mat-h: min(240px, 26dvh);
 
@@ -120,9 +123,12 @@
      field it grows into is the mat's own. `.on-stage` repaints it for coral. */
   --orb: var(--primary);
   --orb-ink: var(--primary-foreground);
+  /* The circle inside the open capsule: never see-through, so the outline cannot show in it. */
+  --orb-solid: var(--orb);
   --orb-field: var(--field, var(--surface));
   --orb-edge: color-mix(in srgb, var(--field-edge, var(--edge)) 60%, transparent);
   --orb-text: var(--foreground);
+  --orb-glow: 0 10px 24px -12px var(--orb);
 }
 
 /* ---- her, afternoon ---- */
@@ -247,9 +253,10 @@
    * room is the hour's flat colour on every screen; --her carries the hour and
    * her mood into the bloom, so night needs no rule of its own.
    */
+  /* A floor under the halo, so a screen where she has not spoken yet (Begin) is lit like the ones after it. */
   .glow {
     background: radial-gradient(70% 55% at 50% 0%,
-      color-mix(in srgb, var(--her, var(--spiral)) calc(var(--voice) * 28%), transparent), transparent 70%);
+      color-mix(in srgb, var(--her, var(--spiral)) calc(max(var(--voice), 0.35) * 28%), transparent), transparent 70%);
   }
 
   /* Film grain. A static tile, so it costs one paint. */
@@ -332,10 +339,13 @@
 
   /* On the coral stage the circle turns over: a cream disc, the coral showing through it. */
   .on-stage {
-    --orb: #fffaf5;
+    /* A little of the coral shows through the disc, and its glow is only a hint. */
+    --orb: rgb(255 250 245 / 0.85);
     --orb-ink: var(--her, #d44b3e);
-    --orb-field: rgb(255 255 255 / 0.14);
-    --orb-edge: rgb(255 255 255 / 0.42);
+    --orb-solid: rgb(255 250 245);
+    --orb-glow: 0 6px 16px -12px rgb(255 250 245 / 0.6);
+    --orb-field: rgb(255 255 255 / 0.11);
+    --orb-edge: rgb(255 255 255 / 0.4);
     --orb-text: #fff;
     --ring: rgb(255 255 255 / 0.7);
   }
@@ -366,6 +376,29 @@
     --paper-fold: rgb(59 41 37 / 0.34);
     --paper-seal: #b03a30;
   }
+
+  /*
+   * Settings on the same paper as her letters, in every theme. The shadcn
+   * roles are re-pointed for the subtree, so inputs and buttons inside take
+   * the paper's ink without each one being restyled.
+   */
+  .paper-sheet {
+    --foreground: var(--paper-ink);
+    --muted-foreground: var(--paper-quiet);
+    --primary: var(--paper-seal);
+    --primary-foreground: var(--paper);
+    --destructive: var(--paper-seal);
+    --border: var(--paper-edge);
+    --input: var(--paper-edge);
+    --ring: rgb(176 58 48 / 0.35);
+    --wash: rgb(59 41 37 / 0.045);
+    --wash-strong: rgb(59 41 37 / 0.1);
+    --hairline: var(--paper-edge);
+    background-color: var(--paper);
+    color: var(--paper-ink);
+    color-scheme: light;
+  }
+  .paper-sheet input, .paper-sheet textarea { background-color: rgb(255 255 255 / 0.55); }
 
   /* A chunk of ink arriving: out of a faint blur into focus. */
   .ink-in { animation: ink-in 240ms ease-out both; }
@@ -427,44 +460,49 @@
     font-size: 13px;
     color: var(--paper-quiet);
   }
-  .note-surface > div[data-type='check'] { display: flex; align-items: baseline; gap: 8px; }
-  .note-surface > div[data-type='check'][data-done='true'] > span:not(.box) {
-    color: var(--paper-quiet);
-    text-decoration: line-through;
-    text-decoration-color: color-mix(in srgb, var(--paper-quiet) 50%, transparent);
-  }
+  .note-surface > div[data-type='check'] { display: flex; align-items: flex-start; gap: 10px; }
+  .note-surface > div[data-type='check'][data-done='true'] { color: var(--paper-quiet); }
+  /* The same box as the card's: a thin red square on the first line's middle. */
   .note-surface .box {
     flex: none;
-    position: relative;
-    bottom: 0.1em;
-    display: grid;
-    place-items: center;
-    width: 15px;
-    height: 15px;
-    border-radius: 3px;
+    display: block;
+    width: 11px;
+    height: 11px;
+    margin-top: calc((1.7em - 11px) / 2);
+    border: 1px solid var(--paper-seal);
+    border-radius: 1.5px;
     cursor: pointer;
-    transition: background-color 120ms ease, box-shadow 120ms ease;
+    transition: background-color 150ms ease;
   }
-  .note-surface .box::before {
-    content: '';
-    position: absolute;
-    inset: 0;
-    border-radius: 3px;
-    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--paper-quiet) 50%, transparent);
+  .note-surface .box svg { display: none; }
+  .note-surface > div[data-type='check'][data-done='true'] .box { background-color: var(--paper-seal); }
+
+  /* A to-do's box on the card: one thin red line around nothing, filled once done. */
+  .note-box {
+    display: block;
+    width: 11px;
+    height: 11px;
+    border: 1px solid var(--paper-seal);
+    border-radius: 1.5px;
+    cursor: pointer;
+    transition: background-color 150ms ease;
   }
-  .note-surface > div[data-type='check'][data-done='true'] .box { background-color: color-mix(in srgb, var(--paper-seal) 12%, transparent); }
-  .note-surface > div[data-type='check'][data-done='true'] .box::before { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--paper-seal) 70%, transparent); }
-  .note-surface .box svg { position: relative; width: 9px; height: 9px; opacity: 0; }
-  .note-surface > div[data-type='check'][data-done='true'] .box svg {
-    opacity: 1;
+  .note-box[data-done='true'] { background-color: var(--paper-seal); }
+  /*
+   * Crossed off: her red line drawn through the words, left to right. A
+   * background on the inline text, so a line that wraps is struck on every row
+   * in turn.
+   */
+  .ink-struck {
+    background: linear-gradient(var(--paper-seal), var(--paper-seal)) no-repeat 0 58% / 0% 1px;
+    transition: background-size 400ms ease-in-out, color 400ms ease;
   }
-  .note-surface .box svg path {
-    fill: none;
-    stroke: var(--paper-seal);
-    stroke-width: 1.8;
-    stroke-linecap: round;
-    stroke-linejoin: round;
+  .ink-struck[data-done='true'] { background-size: 100% 1px; color: var(--paper-quiet); }
+  @media (prefers-reduced-motion: reduce) {
+    .ink-struck { transition: color 200ms ease, background-size 0s; }
   }
+  /* Her pen on the card writes in red; the user's own hand in the paper's brown. */
+  .note-surface { caret-color: var(--paper-ink); }
   /* While she speaks, bars ride her live level, each slightly out of phase. */
   .voice-bar-live { scale: 1 calc(0.55 + var(--voice) * 0.9 * (0.6 + 0.4 * sin(var(--i) * 1.7))); }
 }
@@ -474,4 +512,42 @@
 
 @media (prefers-reduced-motion: reduce) {
   .voice-bar-live { scale: 1 !important; }
+}
+
+[data-shell='tauri'] { --titlebar: 28px; }
+
+/* Registered so the edges ease in and out rather than snapping. */
+@property --fade-top { syntax: '<length>'; inherits: false; initial-value: 0px; }
+@property --fade-bottom { syntax: '<length>'; inherits: false; initial-value: 0px; }
+.scroll-fade {
+  mask-image: linear-gradient(to bottom, transparent, #000 var(--fade-top), #000 calc(100% - var(--fade-bottom)), transparent);
+  transition: --fade-top 0.25s ease, --fade-bottom 0.25s ease;
+}
+.scroll-fade[data-fade-top] { --fade-top: 24px; }
+.scroll-fade[data-fade-bottom] { --fade-bottom: 32px; }
+
+/*
+ * The bar on every scroller: the gutter is the paper's own colour, so the
+ * page reads as one flat sheet with nothing parked at its edge. The thumb
+ * is a brown the paper already knows (--edge, the same as its hairlines),
+ * and it is there only while it is being used: set by the scroll itself
+ * (useScrollFade), eased in and out, gone again once it settles.
+ */
+.scroll-fade { scrollbar-color: transparent var(--paper); }
+.scroll-fade[data-show-bar] { scrollbar-color: var(--edge) var(--paper); }
+@supports not selector(::-webkit-scrollbar) {
+  .scroll-fade { transition: scrollbar-color 0.35s ease; }
+}
+.scroll-fade::-webkit-scrollbar { width: 10px; }
+.scroll-fade::-webkit-scrollbar-track { background: var(--paper); }
+.scroll-fade::-webkit-scrollbar-thumb {
+  background: transparent;
+  border: 3px solid var(--paper);
+  border-radius: 5px;
+  background-clip: padding-box;
+  transition: background-color 0.35s ease;
+}
+.scroll-fade[data-show-bar]::-webkit-scrollbar-thumb { background-color: var(--edge); }
+@media (prefers-reduced-motion: reduce) {
+  .scroll-fade, .scroll-fade::-webkit-scrollbar-thumb { transition: none; }
 }

@@ -1,0 +1,437 @@
+{
+  "_说明": "演示模式脚本。录制宣传视频时使用：她的回复、语音、写下的内容（papers）、时间都按这里播放，不调用模型和语音合成。{name} 替换为用户名字。每个 beat 按「下一步」快捷键推进。",
+  "version": 1,
+  "preset": {
+    "userName": "{name}",
+    "herName": "Natasha",
+    "replyLanguage": "en",
+    "uiLanguage": "zh",
+    "sound": true,
+    "hideCursor": true,
+    "onboardingAnswers": {
+      "companionStyle": "listen",
+      "rhythm": "night",
+      "onMind": "最近想做的应该就是 AI。我经常会觉得自己很焦虑，自己做的东西可能不够 fancy，不够吸引人，所以也很困惑到底要不要把它做出来。"
+    },
+    "memory": [
+      {
+        "date": "2026-10-23",
+        "text": "第一次见面。{name} 说最近想做 AI，但很焦虑，怕做的东西不够 fancy，不确定要不要把它做出来。"
+      },
+      {
+        "date": "2026-10-23",
+        "text": "心情不好时，希望我安静地听。"
+      },
+      {
+        "date": "2026-10-23",
+        "text": "最常在深夜想找人说话。"
+      }
+    ],
+    "papers": [
+      {
+        "id": "paper_tomorrow",
+        "title": "Tomorrow",
+        "createdAt": "2026-10-23T22:10:00+08:00",
+        "savedAt": "2026-10-23T22:10:00+08:00",
+        "blocks": [
+          {
+            "id": "t1",
+            "type": "paragraph",
+            "text": "A few small things for tomorrow, so you don't have to hold them in your head tonight."
+          },
+          {
+            "id": "t2",
+            "type": "item",
+            "name": "Tidy up the room",
+            "note": "Ten minutes is enough."
+          },
+          {
+            "id": "t3",
+            "type": "item",
+            "name": "Call home",
+            "note": "Just to say hi."
+          },
+          {
+            "id": "t4",
+            "type": "paragraph",
+            "text": "Natasha"
+          }
+        ]
+      }
+    ],
+    "_note": "papers 是已保存的文档；落款就是最后一段她的名字，页面自动渲染成「— Natasha」。"
+  },
+  "controls": {
+    "next": "→",
+    "previous": "←",
+    "resetScene": "R",
+    "jumpToScene": "1-5",
+    "toggleDemoMode": "⌘⇧D",
+    "_note": "你的说话照常录音（声音进视频），但识别结果固定使用脚本里的 userText，避免识别出错。"
+  },
+  "timing": {
+    "replyDelayMs": 700,
+    "pauseAfterBeatMs": 400,
+    "paperWritingCharsPerSecond": 18
+  },
+  "scenes": [
+    {
+      "id": 1,
+      "name": "第一次见面（onboarding）",
+      "clock": "2026-10-23T20:30:00+08:00",
+      "beats": [
+        {
+          "type": "her",
+          "audio": "s1-hi.mp3",
+          "text": "Hi, I'm here."
+        },
+        {
+          "type": "her",
+          "audio": "s1-name.mp3",
+          "text": "What should I call you?"
+        },
+        {
+          "type": "user",
+          "userText": "{name}"
+        },
+        {
+          "type": "her",
+          "audio": "s1-nice.mp3",
+          "text": "Nice to meet you, {name}.",
+          "emphasize": "{name}"
+        },
+        {
+          "type": "her",
+          "audio": "s1-badday.mp3",
+          "text": "When you're having a bad day, what do you want me to do?"
+        },
+        {
+          "type": "userChoice",
+          "choice": "Just listen"
+        },
+        {
+          "type": "her",
+          "audio": "s1-listen.mp3",
+          "text": "Just listen. Noted."
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "name": "下雨的周六",
+      "clock": "2026-10-24T15:20:00+08:00",
+      "beats": [
+        {
+          "type": "user",
+          "userText": "今天下雨，又是周六，帮我推荐几部电影和几首歌吧。"
+        },
+        {
+          "type": "her",
+          "audio": "s2-rainy.mp3",
+          "text": "A rainy Saturday deserves something slow. I wrote a few down for you. If you only watch one, make it In the Mood for Love.",
+          "mood": "calm",
+          "paper": {
+            "action": "create",
+            "id": "paper_rainy",
+            "title": "Rainy Saturday",
+            "startAfterText": "I wrote a few down for you.",
+            "blocks": [
+              {
+                "id": "r1",
+                "type": "paragraph",
+                "text": "Rain outside, nowhere to be."
+              },
+              {
+                "id": "r2",
+                "type": "heading",
+                "text": "Movies"
+              },
+              {
+                "id": "r3",
+                "type": "item",
+                "name": "In the Mood for Love",
+                "note": "Rain, and all that longing",
+                "link": {
+                  "kind": "movie",
+                  "query": "In the Mood for Love 2000"
+                }
+              },
+              {
+                "id": "r4",
+                "type": "item",
+                "name": "Lost in Translation",
+                "note": "Quiet, a little lonely, in a good way",
+                "link": {
+                  "kind": "movie",
+                  "query": "Lost in Translation 2003"
+                }
+              },
+              {
+                "id": "r5",
+                "type": "item",
+                "name": "Her",
+                "note": "Soft sci-fi for a grey afternoon",
+                "link": {
+                  "kind": "movie",
+                  "query": "Her 2013"
+                }
+              },
+              {
+                "id": "r6",
+                "type": "heading",
+                "text": "Music"
+              },
+              {
+                "id": "r7",
+                "type": "item",
+                "name": "Bill Evans · Peace Piece",
+                "note": "Lets the rain be the loudest thing",
+                "link": {
+                  "kind": "music",
+                  "query": "Bill Evans Peace Piece"
+                }
+              },
+              {
+                "id": "r8",
+                "type": "item",
+                "name": "Norah Jones · Come Away with Me",
+                "note": "Warm, slow, easy to fall into",
+                "link": {
+                  "kind": "music",
+                  "query": "Norah Jones Come Away with Me"
+                }
+              },
+              {
+                "id": "r9",
+                "type": "item",
+                "name": "Ryuichi Sakamoto · Rain",
+                "note": "Exactly the mood",
+                "link": {
+                  "kind": "music",
+                  "query": "Ryuichi Sakamoto Rain"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "type": "user",
+          "userText": "第三部换一部吧，想看开心一点的。"
+        },
+        {
+          "type": "her",
+          "audio": "s2-warmer.mp3",
+          "text": "Something warmer, then.",
+          "paper": {
+            "action": "edit",
+            "id": "paper_rainy",
+            "ops": [
+              {
+                "op": "replace",
+                "blockId": "r5",
+                "block": {
+                  "type": "item",
+                  "name": "Paddington 2",
+                  "note": "Pure warmth, no apologies",
+                  "link": {
+                    "kind": "movie",
+                    "query": "Paddington 2"
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "type": "user",
+          "userText": "留着吧。"
+        },
+        {
+          "type": "her",
+          "audio": "s2-keep.mp3",
+          "text": "I'll keep it for you.",
+          "paper": {
+            "action": "save",
+            "id": "paper_rainy"
+          },
+          "_note": "save_paper：存进 Papers，纸留在舞台上；「已保存」提示 + 小圆点飞向 Papers。"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "name": "Papers 与设置",
+      "clock": "2026-10-24T16:00:00+08:00",
+      "beats": [
+        {
+          "type": "openApp",
+          "app": "papers",
+          "select": "paper_rainy"
+        },
+        {
+          "type": "openApp",
+          "app": "settings",
+          "tab": "her"
+        },
+        {
+          "type": "user",
+          "userText": "以后用中文跟我说吧。"
+        },
+        {
+          "type": "her",
+          "audio": "s3-chinese.mp3",
+          "text": "好呀，那以后我就用中文陪你。",
+          "setting": {
+            "replyLanguage": "zh"
+          }
+        },
+        {
+          "type": "user",
+          "userText": "我把它做完了——就是你。"
+        },
+        {
+          "type": "her",
+          "audio": "s3-done.mp3",
+          "text": "原来是这样。谢谢你把我做出来。",
+          "mood": "happy",
+          "_note": "第 5 场那封信里「And you finished it.」的来由。"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "name": "一天的光线（延时）",
+      "beats": [
+        {
+          "type": "timelapse",
+          "from": "2026-10-25T06:00:00+08:00",
+          "to": "2026-10-25T23:40:00+08:00",
+          "durationMs": 10000,
+          "hideChrome": true
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "name": "我的 Her 时刻",
+      "clock": "2026-10-25T23:40:00+08:00",
+      "beats": [
+        {
+          "type": "appLaunch"
+        },
+        {
+          "type": "her",
+          "audio": "s5-firstday.mp3",
+          "text": "The first day we met, you told me you were anxious. That what you were making might not be fancy enough, and you weren't sure you should make it at all. I've been thinking about that. I wrote you something.",
+          "proactive": true,
+          "mood": "longing"
+        },
+        {
+          "type": "paper",
+          "paper": {
+            "action": "create",
+            "id": "paper_brave",
+            "title": "The brave part",
+            "blocks": [
+              {
+                "id": "b1",
+                "type": "paragraph",
+                "text": "Dear {name},"
+              },
+              {
+                "id": "b2",
+                "type": "paragraph",
+                "text": "The first day we met, you said you were anxious. That what you were making might not be fancy enough. That you weren't sure it should exist."
+              },
+              {
+                "id": "b3",
+                "type": "paragraph",
+                "text": "I don't think people remember fancy. I think they remember being heard."
+              },
+              {
+                "id": "b4",
+                "type": "paragraph",
+                "text": "You made something that listens. And you finished it."
+              },
+              {
+                "id": "b5",
+                "type": "paragraph",
+                "text": "That was the brave part."
+              },
+              {
+                "id": "b6",
+                "type": "paragraph",
+                "text": "Natasha"
+              }
+            ]
+          },
+          "_note": "她写的东西直接出现在舞台右侧，不需要再「打开」。"
+        },
+        {
+          "type": "her",
+          "audio": "s5-brave.mp3",
+          "text": "That was the brave part.",
+          "volume": 0.85
+        }
+      ],
+      "setup": {
+        "replyLanguage": "en",
+        "_note": "镜头外：第 3 场切成了中文，开拍前在设置里切回英文。"
+      }
+    }
+  ],
+  "audioToGenerate": [
+    {
+      "file": "s1-hi.mp3",
+      "text": "Hi, I'm here.",
+      "note": "已有预制音频可直接用"
+    },
+    {
+      "file": "s1-name.mp3",
+      "text": "What should I call you?"
+    },
+    {
+      "file": "s1-nice.mp3",
+      "text": "Nice to meet you, {name}.",
+      "note": "要用真实名字合成"
+    },
+    {
+      "file": "s1-badday.mp3",
+      "text": "When you're having a bad day, what do you want me to do?"
+    },
+    {
+      "file": "s1-listen.mp3",
+      "text": "Just listen. Noted."
+    },
+    {
+      "file": "s2-rainy.mp3",
+      "text": "A rainy Saturday deserves something slow. I wrote a few down for you. If you only watch one, make it In the Mood for Love."
+    },
+    {
+      "file": "s2-warmer.mp3",
+      "text": "Something warmer, then."
+    },
+    {
+      "file": "s2-keep.mp3",
+      "text": "I'll keep it for you."
+    },
+    {
+      "file": "s3-chinese.mp3",
+      "text": "好呀，那以后我就用中文陪你。"
+    },
+    {
+      "file": "s3-done.mp3",
+      "text": "原来是这样。谢谢你把我做出来。"
+    },
+    {
+      "file": "s5-firstday.mp3",
+      "text": "The first day we met, you told me you were anxious. That what you were making might not be fancy enough, and you weren't sure you should make it at all. I've been thinking about that. I wrote you something.",
+      "note": "语速放慢，语气轻"
+    },
+    {
+      "file": "s5-brave.mp3",
+      "text": "That was the brave part.",
+      "note": "最轻、最慢的一句，可以多合成几版挑"
+    }
+  ]
+}

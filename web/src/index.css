@@ -406,6 +406,14 @@
   }
   .paper-sheet input, .paper-sheet textarea { background-color: rgb(255 255 255 / 0.55); }
 
+  /*
+   * A day of light run for recording: the clock paints every frame itself, so
+   * the slow colour fades would only lag behind it; and everything but the
+   * light and her coil is put away.
+   */
+  [data-timelapse], [data-timelapse] * { transition: none !important; }
+  [data-timelapse] :is([data-chrome], [data-stage-paper], [data-paper-corner]) { visibility: hidden; }
+
   /* A chunk of ink arriving: out of a faint blur into focus. */
   .ink-in { animation: ink-in 240ms ease-out both; }
   @keyframes ink-in {

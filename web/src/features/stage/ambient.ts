@@ -106,9 +106,10 @@ export function applyMood(her: RGB, mood: Mood): RGB {
  * `now` pins the clock for previewing a time of day. `page` makes the whole
  * page follow the hour too, not only the element: the theme's light or dark
  * tokens then come from the clock instead of the system, for as long as the
- * element is up.
+ * element is up. `held`: someone else is painting the element (a timelapse);
+ * the clock keeps out of it until it is let go.
  */
-export function useAmbientTheme(target: RefObject<HTMLElement | null>, mood: Mood, { now, page = false }: { now?: Date; page?: boolean } = {}) {
+export function useAmbientTheme(target: RefObject<HTMLElement | null>, mood: Mood, { now, page = false, held = false }: { now?: Date; page?: boolean; held?: boolean } = {}) {
   const moodRef = useRef(mood);
   moodRef.current = mood;
 
@@ -123,20 +124,26 @@ export function useAmbientTheme(target: RefObject<HTMLElement | null>, mood: Moo
 
   useLayoutEffect(() => {
     const el = target.current;
-    if (!el) return;
+    if (!el || held) return;
     const hold = page ? holdDark() : null;
     const apply = () => {
-      const { style, dark } = paletteAt(now ?? new Date(), moodRef.current);
-      for (const [name, value] of Object.entries(style)) el.style.setProperty(name, value);
-      el.dataset.dark = dark ? 'true' : 'false';
+      const dark = paintAt(el, now ?? new Date(), moodRef.current);
       hold?.set(dark);
     };
     apply();
     const id = now ? undefined : window.setInterval(apply, 60_000);
     return () => { window.clearInterval(id); hold?.release(); };
-  }, [target, mood, now, page]);
+  }, [target, mood, now, page, held]);
 
   return first;
+}
+
+/** Writes the palette for `date` onto the element at once; true when it is dark. */
+export function paintAt(el: HTMLElement, date: Date, mood: Mood): boolean {
+  const { style, dark } = paletteAt(date, mood);
+  for (const [name, value] of Object.entries(style)) el.style.setProperty(name, value);
+  el.dataset.dark = dark ? 'true' : 'false';
+  return dark;
 }
 
 function paletteAt(date: Date, mood: Mood) {

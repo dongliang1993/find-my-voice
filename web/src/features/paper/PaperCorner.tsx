@@ -9,7 +9,7 @@ export function PaperCorner({ place, onOpen }: { place: PaperPlace; onOpen: () =
   const still = useReducedMotion() ?? false;
   const hide = still ? { opacity: 0 } : { opacity: 0, x: -10 };
   return (
-    <motion.button type="button" onClick={onOpen} aria-label="Papers"
+    <motion.button data-paper-corner type="button" onClick={onOpen} aria-label="Papers"
       initial={hide} animate={{ opacity: 1, x: 0 }} exit={hide}
       transition={{ duration: still ? 0.2 : 0.35, ease: [0.22, 1, 0.36, 1] }}
       whileHover={still ? undefined : { x: 3 }}

@@ -30,6 +30,7 @@ import { cn } from '@/lib/utils';
 import { useIdleChrome } from '@/hooks/useIdleChrome';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { useAmbientTheme, type Mood } from '@/features/stage/ambient';
+import { useTimelapse } from '@/features/stage/useTimelapse';
 import { lastTake, latestLine } from '@/features/stage/line';
 import { usePaused } from '@/hooks/useVoice';
 import { STAGE_REST, stageState, VISUALS } from '@/features/stage/state';
@@ -139,7 +140,10 @@ export function Stage({
 
   const state = stageState({ status, playing: playing !== null, listening });
   const visual = VISUALS[state];
-  const ambient = useAmbientTheme(room, moodOf(messages.at(-1)?.emotion));
+  const mood = moodOf(messages.at(-1)?.emotion);
+  /** A day of light run for recording; while it runs, it paints the room and the chrome is away. */
+  const lapsing = useTimelapse(room, mood);
+  const ambient = useAmbientTheme(room, mood, { held: lapsing });
   // The buttons step back while nothing is happening; they stay put while you speak.
   const hidden = useIdleChrome(3000, listening, arrived);
 
@@ -273,7 +277,7 @@ export function Stage({
   }, [saved?.seq]);
 
   return (
-    <div ref={room} {...ambient}
+    <div ref={room} {...ambient} data-timelapse={lapsing || undefined}
       className="relative isolate flex h-dvh items-stretch justify-center overflow-hidden bg-(--base) pt-(--titlebar) text-(--ink) transition-colors duration-[2500ms] sm:items-center sm:p-8">
       {/* The room breathes while she speaks, as it did in the first meeting. */}
       <div className="glow pointer-events-none absolute inset-x-0 top-0 -z-10 h-[70%]" aria-hidden="true" />
@@ -288,7 +292,7 @@ export function Stage({
         {/* Laid over the panel, not in the flow: the card's height is the panel
             plus the mat, exactly as in the first meeting. */}
         {/* With a paper on the right, the history button keeps to the red side, against the paper's edge. */}
-        <motion.header initial={false} animate={{ right: reserve }} transition={shift}
+        <motion.header data-chrome initial={false} animate={{ right: reserve }} transition={shift}
           className={cn('absolute left-0 top-0 z-20 flex items-center justify-between px-6 pt-[calc(1rem+env(safe-area-inset-top))] pb-2 transition-opacity duration-500', hidden && 'pointer-events-none opacity-0')}>
           <span className="font-heading text-[20px] italic opacity-85">{name}</span>
           <button type="button" onClick={() => setHistoryOpen(open => !open)} aria-label={word('history')} aria-pressed={historyOpen}
@@ -304,7 +308,7 @@ export function Stage({
             margin, not padding: her opened reply is laid out against this box. */}
         <motion.section initial={false} animate={{ marginRight: reserve }} transition={shift}
           className={cn(STAGE_PANEL, 'transition-colors duration-[2500ms]')}>
-          <div className={STAGE_CAPTION}>
+          <div data-chrome className={STAGE_CAPTION}>
             <p aria-live="polite"
               className={cn(STAGE_CAPTION_TEXT, 'transition-[color,opacity] duration-500', caption ? 'text-white/75' : 'text-white/0', open && 'opacity-0')}>
               {caption}
@@ -333,7 +337,7 @@ export function Stage({
           {/* Opened, the whole reply is laid over the coil rather than making room
               for itself, so the column keeps its shape and nothing jumps. */}
           {/* Sharing the stage, her line gives up only a little of its size: the left still holds two lines of it. */}
-          <div aria-live="polite" className={cn('w-full transition-[font-size] duration-500', STAGE_LINE)}
+          <div data-chrome aria-live="polite" className={cn('w-full transition-[font-size] duration-500', STAGE_LINE)}
             style={reserve ? { fontSize: 'clamp(24px, 2.2vw, 33px)' } : undefined}>
             {line && (
               <Caption key={`${line.id}:${replays}`} messageId={line.id} text={line.text} audioId={line.audioId}
@@ -348,7 +352,7 @@ export function Stage({
         {/* Your half: the mat, with the circle just under the line. Nothing else is
             down here once the questions are over, so it does not hide at the middle. */}
         <footer className={cn('relative', MAT)}>
-          <motion.div initial={false} animate={{ right: reserve }} transition={shift} className={ORB_SLOT_TOP}>
+          <motion.div data-chrome initial={false} animate={{ right: reserve }} transition={shift} className={ORB_SLOT_TOP}>
             <motion.div layoutId="orb">
               <Orb ear={ear.ear} canSpeak={canListen && microphone.supported && !ear.denied} dim={visual.mic === 'dim'}
                 value={draft} onChange={value => { setDraft(value); setKeystroke(n => n + 1); }}
@@ -414,7 +418,7 @@ export function Stage({
 
       {/* The corner is the system's: the switcher, last so it stays over a stage that fills a phone. */}
       <Switcher ref={switcher} apps={apps} current={view} rest={shelf} still={still}
-        hidden={hidden && view === 'home'}
+        hidden={(hidden && view === 'home') || lapsing}
         onOpen={id => openView(id as View)} />
     </div>
   );

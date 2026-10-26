@@ -26,6 +26,7 @@ const PAPER_TOOL = `mcp__${TOOL_SERVER}__write_paper`;
 const EDIT_PAPER_TOOL = `mcp__${TOOL_SERVER}__edit_paper`;
 const SAVE_PAPER_TOOL = `mcp__${TOOL_SERVER}__save_paper`;
 const PREFERENCES_TOOL = `mcp__${TOOL_SERVER}__update_preferences`;
+const REST_TOOL = `mcp__${TOOL_SERVER}__rest`;
 /** How often a paper still being written is sent on. The pen is slower than the model; finer adds nothing. */
 const PAPER_PROGRESS_MS = 150;
 
@@ -43,6 +44,10 @@ blockId 用每一块的 id（写下和修改的结果里都列着）。改之前
 对方说得不明确（比如只说「换一个」）就先问清楚是哪一个，不要猜。对方要整份重写，就说一句「我重新写一份」，然后用 write_paper。`;
 
 const SAVE_PAPER_DESCRIPTION = `对方想留着面前这一份（比如说「留着」「存一下」「收起来」）：把它存进 Papers。存了它还留在舞台上。调用前先用一句口语回应，比如「好，帮你存起来」。`;
+
+const REST_DESCRIPTION = `对方明确要离开、结束这次聊天时用：「晚安」「我要睡了」「拜拜，我去忙了」「先这样，我休息了」。先用一句口语跟对方道别（用 send_voice），再调用这个工具；之后房间会暗下来，等对方回来。
+不要用：对方只是提到「拜拜」这个词（比如在讲别人、讲分手、开玩笑）；「我休息一下」「等我五分钟」这种马上回来的；你觉得对方该去睡了但对方没说要走。拿不准就不用，正常聊下去。
+这是对方要走，不是你要走：你自己不要提出结束聊天。`;
 
 const PREFERENCES_DESCRIPTION = `对方明确要你改一个习惯时用：「以后用中文跟我说」改 language；「这几天别主动找我」「可以多找我聊」改 initiative。只填对方要改的那一项。
 改完用一句口语确认，比如「好，以后跟你说中文」「好，这几天我不主动找你」。对方只是随口一说、没有要你改的意思，就不要用。`;
@@ -135,6 +140,14 @@ export class ClaudeBrain implements Brain {
       return { content: [{ type: 'text', text: result }] };
     });
 
+    const rest = tool('rest', REST_DESCRIPTION, {}, async () => {
+      const result = await new Promise<string>(respond => {
+        if (!this.sink) return respond('现在不能休息。');
+        this.sink({ type: 'rest', respond });
+      });
+      return { content: [{ type: 'text', text: result }] };
+    });
+
     const updatePreferences = tool('update_preferences', PREFERENCES_DESCRIPTION, preferencesShape, async ({ language, initiative }) => {
       const patch: PreferencesPatch = { ...(language ? { language } : {}), ...(initiative ? { initiative } : {}) };
       const result = await new Promise<string>(respond => {
@@ -156,8 +169,8 @@ export class ClaudeBrain implements Brain {
         cwd: workspace,
         settingSources: [],
         tools: [],
-        mcpServers: { [TOOL_SERVER]: createSdkMcpServer({ name: TOOL_SERVER, tools: [sendVoice, writePaper, editPaper, savePaper, updatePreferences] }) },
-        allowedTools: [VOICE_TOOL, PAPER_TOOL, EDIT_PAPER_TOOL, SAVE_PAPER_TOOL, PREFERENCES_TOOL],
+        mcpServers: { [TOOL_SERVER]: createSdkMcpServer({ name: TOOL_SERVER, tools: [sendVoice, writePaper, editPaper, savePaper, updatePreferences, rest] }) },
+        allowedTools: [VOICE_TOOL, PAPER_TOOL, EDIT_PAPER_TOOL, SAVE_PAPER_TOOL, PREFERENCES_TOOL, REST_TOOL],
         permissionMode: 'dontAsk',
         includePartialMessages: true,
         // Chat needs a fast first word, not deep reasoning; thinking added seconds per reply.

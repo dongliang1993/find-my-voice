@@ -21,6 +21,12 @@ export interface StateVisual {
 /** How much of her wave the stage keeps in silence; the first meeting settles to it on the way there. */
 export const STAGE_REST = 0.12;
 
+/**
+ * She said goodbye and rests: the room goes down to a glow, her words fade
+ * out, the circle stays — a word or a touch brings her straight back.
+ */
+export const ASLEEP: StateVisual = { lineOpacity: 0, herBrightness: 0.55, mic: 'dim' };
+
 export const VISUALS: Record<StageState, StateVisual> = {
   idle: { lineOpacity: 0.9, herBrightness: 1, mic: 'normal' },
   listening: { lineOpacity: 0.5, herBrightness: 0.92, mic: 'active' },

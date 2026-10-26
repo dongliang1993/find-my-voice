@@ -14,9 +14,10 @@ const rules: InitiativeRules = {
   rhythmStart: 8, rhythmEnd: 11, echoGapDays: 3,
 };
 
-function setup({ outcome = 'spoke' as SpeakUpOutcome, busy = false, extract = async (): Promise<unknown> => 'nothing_new', judge }: {
+function setup({ outcome = 'spoke' as SpeakUpOutcome, busy = false, resting = false, extract = async (): Promise<unknown> => 'nothing_new', judge }: {
   outcome?: SpeakUpOutcome;
   busy?: boolean;
+  resting?: boolean;
   extract?: () => Promise<unknown>;
   judge?: (candidate: { kind: string; reason: string }, recent: ChatMessage[]) => Promise<{ speak: boolean; subject: string; reason: string }>;
 } = {}) {
@@ -30,7 +31,7 @@ function setup({ outcome = 'spoke' as SpeakUpOutcome, busy = false, extract = as
   let extractions = 0;
   const scheduler = new InitiativeScheduler({
     store, rules: () => rules, now: () => now,
-    chat: { get busy() { return busy; }, speakUp: async r => {
+    chat: { get busy() { return busy; }, get resting() { return resting; }, speakUp: async r => {
       asked.push(r);
       const messages: ChatMessage[] = outcome === 'spoke' ? [store.append({ role: 'assistant', kind: 'text', text: '嗨', initiative: r.kind })] : [];
       return { outcome, messages };
@@ -43,6 +44,18 @@ function setup({ outcome = 'spoke' as SpeakUpOutcome, busy = false, extract = as
 }
 
 const MIN = 60_000;
+
+test('while she rests after a goodbye she does not speak first, and does not even ask whether to', async () => {
+  let asked = 0;
+  const s = setup({ outcome: 'spoke', resting: true, judge: async () => { asked++; return { speak: true, subject: '', reason: '' }; } });
+  s.store.append({ role: 'user', kind: 'text', text: '后天面试' });
+  s.store.addFollowup({ topic: '面试', note: '', dueAt: new Date(2026, 9, 22, 14, 0) });
+  s.advance(2 * 3600_000);
+  await s.scheduler.tick();
+  assert.equal(s.asked.length, 0);
+  assert.equal(asked, 0, 'no judge call for a moment that cannot be used');
+  assert.equal(s.store.dueFollowups(new Date(2026, 9, 22, 17, 0)).length, 1, 'the follow-up waits for her to be up');
+});
 
 test('leaves a live conversation alone even with a follow-up due', async () => {
   const s = setup({ outcome: 'spoke' });

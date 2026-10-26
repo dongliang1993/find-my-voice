@@ -247,6 +247,7 @@ export function createHttp(app: App, webRoot: string) {
           if (message.visible && !seen) void app.initiative.tick();
         }
         else if (message.type === 'reading') app.chat.setReading(message.paperId);
+        else if (message.type === 'wake') app.chat.wake();
         else void app.chat.interrupt();
       },
       onClose() { unsubscribe(); app.presence.delete(viewer); },

@@ -22,6 +22,8 @@ export type BrainEvent =
   | { type: 'paper_edit'; paperId?: string; ops: unknown; respond: (result: string) => void }
   /** The user asked her to keep the paper in front of them: it goes onto the Papers list. */
   | { type: 'paper_save'; respond: (result: string) => void }
+  /** The user is leaving for now — goodnight, off to rest: she rests with them. */
+  | { type: 'rest'; respond: (result: string) => void }
   /** The user asked, out loud, for a preference to change. Applied by the app; the answer is the tool's. */
   | { type: 'preferences'; patch: PreferencesPatch; respond: (result: string) => void }
   | { type: 'error'; code: string; message: string }

@@ -25,6 +25,8 @@ type State = {
   papers: Paper[];
   /** The paper on the stage, if any. */
   stage: string | null;
+  /** Until when she rests after a goodbye (ISO); null while she is up. */
+  resting: string | null;
   /** Edits in the order they happened, for the page to play through. */
   edits: PaperEdit[];
   /** Bumped when a setting changed outside the settings page: she was asked to, out loud. */
@@ -62,7 +64,7 @@ function reducer(state: State, action: Action): State {
   if (action.type === 'dismiss') return { ...state, notices: state.notices.filter(n => n.id !== action.id) };
   const event = action.event;
   switch (event.type) {
-    case 'hello': return { ...state, messages: event.messages, status: event.status, papers: event.papers ?? [], stage: event.stage ?? null };
+    case 'hello': return { ...state, messages: event.messages, status: event.status, papers: event.papers ?? [], stage: event.stage ?? null, resting: event.resting ?? null };
     case 'message': return { ...state, messages: upsert(state.messages, event.message) };
     case 'text_delta': return {
       ...state,
@@ -97,6 +99,7 @@ function reducer(state: State, action: Action): State {
       };
     }
     case 'stage': return { ...state, stage: event.paperId };
+    case 'resting': return { ...state, resting: event.until };
     case 'settings': return { ...state, settingsStamp: state.settingsStamp + 1 };
     default: return state;
   }
@@ -108,7 +111,7 @@ const RETRY_MS = [500, 1000, 2000, 4000, 8000];
 export function useChat() {
   const [state, dispatch] = useReducer(reducer, {
     messages: [], status: 'idle', connection: 'connecting', notices: [], reached: null, lines: {}, papers: [], edits: [],
-    stage: null, settingsStamp: 0, saved: null,
+    stage: null, resting: null, settingsStamp: 0, saved: null,
   });
   const socket = useRef<WebSocket | null>(null);
   const pending = useRef<ClientEvent[]>([]);
@@ -183,5 +186,11 @@ export function useChat() {
     emit({ type: 'reading', paperId });
   }, [emit]);
 
-  return { ...state, send, interrupt, dismiss, setReading };
+  /** A touch while she rests: up at once here, and the server told so every page follows. */
+  const wake = useCallback(() => {
+    dispatch({ type: 'event', event: { type: 'resting', until: null } });
+    emit({ type: 'wake' });
+  }, [emit]);
+
+  return { ...state, send, interrupt, dismiss, setReading, wake };
 }

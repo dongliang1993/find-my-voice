@@ -6,7 +6,8 @@ import type { Judgement } from './judge.js';
 
 export type InitiativeSchedulerOptions = {
   store: ChatStore;
-  chat: { readonly busy: boolean; speakUp(request: SpeakUpRequest): Promise<SpeakUpResult> };
+  /** `resting`: the user said goodbye; nothing is said first until they are back or the hour comes. */
+  chat: { readonly busy: boolean; readonly resting?: boolean; speakUp(request: SpeakUpRequest): Promise<SpeakUpResult> };
   memory: { run(): Promise<unknown> };
   rules: (adapt?: { unanswered?: number }) => InitiativeRules;
   /**
@@ -108,6 +109,8 @@ export class InitiativeScheduler {
       }
     }
     if (now.getTime() < this.speakBlockedUntil) return;
+    // They said goodbye. Not now — and not a judge call to find that out; what is due stays due.
+    if (chat.resting) return;
 
     // The moment for anything older than the window has passed; retire it rather than ask late.
     const expired = store.expireFollowups(new Date(now.getTime() - FOLLOWUP_WINDOW_MS));

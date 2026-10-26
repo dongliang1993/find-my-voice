@@ -73,6 +73,7 @@ export function App() {
           onSend={chat.send} onInterrupt={chat.interrupt}
           needsSetup={needsSetup}
           online={online && Boolean(status.brain.ready)}
+          resting={chat.resting} onWake={chat.wake}
           onReading={chat.setReading} />
         <Toaster position="top-center" />
       </>

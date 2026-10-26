@@ -295,7 +295,7 @@ const MODE_KNOBS: Record<InitiativeMode, Pick<ResolvedInitiative,
  * The hours the first meeting said the user wants company. `anytime` has no
  * opinion, so the mode's own windows stand.
  */
-const RHYTHM_HOURS: Record<Rhythm, { rhythmStart: number; rhythmEnd: number; quietStart: number; quietEnd: number } | null> = {
+export const RHYTHM_HOURS: Record<Rhythm, { rhythmStart: number; rhythmEnd: number; quietStart: number; quietEnd: number } | null> = {
   morning: { rhythmStart: 7, rhythmEnd: 10, quietStart: 23, quietEnd: 6 },
   commute: { rhythmStart: 17, rhythmEnd: 20, quietStart: 23, quietEnd: 8 },
   night: { rhythmStart: 21, rhythmEnd: 23, quietStart: 3, quietEnd: 11 },

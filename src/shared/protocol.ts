@@ -81,11 +81,13 @@ export type ClientEvent =
   /** The page reports whether it is on screen, so she only rings the OS when nobody is looking. */
   | { type: 'presence'; visible: boolean }
   /** Which paper is open in the Papers app, if any: what the user says next may be about it. */
-  | { type: 'reading'; paperId: string | null };
+  | { type: 'reading'; paperId: string | null }
+  /** A touch on the page while she rests — a click, a key, the mic: she is up. */
+  | { type: 'wake' };
 
 export type ServerEvent =
   /** `papers`: every paper still around, newest first; `stage`: the one on the stage. */
-  | { type: 'hello'; messages: ChatMessage[]; status: CompanionStatus; papers: Paper[]; stage: string | null }
+  | { type: 'hello'; messages: ChatMessage[]; status: CompanionStatus; papers: Paper[]; stage: string | null; resting: string | null }
   /** A new message, or the latest full state of an existing one. */
   | { type: 'message'; message: ChatMessage }
   | { type: 'text_delta'; messageId: string; delta: string }
@@ -105,6 +107,8 @@ export type ServerEvent =
   | { type: 'paper_edit'; paper: Paper; ops: PaperOp[] }
   /** Deleted from the Papers list. */
   | { type: 'paper_removed'; paperId: string }
+  /** She said goodbye and rests until `until` (ISO); null, she is up again. */
+  | { type: 'resting'; until: string | null }
   /** Which paper is on the stage now; null when the stage is clear. */
   | { type: 'stage'; paperId: string | null }
   /** A setting changed somewhere other than the settings page — she was asked to, out loud. */

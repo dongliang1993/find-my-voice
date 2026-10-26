@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { loadSettings, resolveInitiative, updateSettings, type Settings, type SettingsPatch } from './config.js';
+import { wakeAt } from './chat/rest.js';
 import { readClaudeSettings, resolveBrainAuth } from './brain/auth.js';
 import { ClaudeBrain } from './brain/claude.js';
 import { ScriptBrain, type ScriptStep } from './brain/scripted.js';
@@ -54,6 +55,8 @@ export class App {
     this.chat = new ChatService({
       store: this.store, voice: this.voice, onLog: log,
       canSpeak: () => voiceReady(this.settings.voice),
+      // Up again with the hours the first meeting said the user likes company.
+      wakeAt: now => wakeAt(this.settings.companion.rhythm, now),
       createBrain: ({ fresh }) => this.createBrain(fresh),
       forgetSession: () => this.store.setState(SESSION_KEY, null),
       // Not a full settings change: the brain stays up mid-turn. A new language

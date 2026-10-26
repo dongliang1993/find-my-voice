@@ -33,6 +33,8 @@ export type ChatServiceOptions = {
   updatePreferences?: (patch: PreferencesPatch) => string;
   /** Whether a voice is set up to say a typed line with; assumed so when not given. */
   canSpeak?: () => boolean;
+  /** When she is up again after a goodbye said now; without it she rests until woken. */
+  wakeAt?: (now: Date) => Date;
   onLog?: (line: string) => void;
 };
 
@@ -50,6 +52,9 @@ type Job =
 /** A paper on the stage older than this is no longer "in front of the user" as far as her context goes. */
 const STAGE_PAPER_MS = 12 * 3600_000;
 const HIDDEN = '[系统提示，对方看不到这条]';
+
+/** Until when she rests, in the state table; absent, she is up. */
+const RESTING_KEY = 'resting_until';
 
 const RECENT_CLIENT_IDS = 200;
 const PASS = /^\s*PASS\s*[.。]?\s*$/i;
@@ -96,7 +101,15 @@ export class ChatService {
   /** The version of each paper as she last saw it; a paper changed since is shown to her in full. */
   private seen = new Map<string, number>();
 
-  constructor(private options: ChatServiceOptions) {}
+  /** Wakes her at the hour she rests until. */
+  private restTimer: ReturnType<typeof setTimeout> | undefined;
+
+  constructor(private options: ChatServiceOptions) {
+    // An hour that came and went while the app was closed is not slept through.
+    const until = options.store.getState(RESTING_KEY);
+    if (until && Date.parse(until) > Date.now()) this.scheduleWake(until);
+    else if (until) options.store.setState(RESTING_KEY, null);
+  }
 
   subscribe(listener: Listener) {
     this.listeners.add(listener);
@@ -105,7 +118,7 @@ export class ChatService {
 
   snapshot(): Extract<ServerEvent, { type: 'hello' }> {
     const { store } = this.options;
-    return { type: 'hello', messages: store.recent(), status: this.status, papers: store.papers(), stage: store.stage() };
+    return { type: 'hello', messages: store.recent(), status: this.status, papers: store.papers(), stage: store.stage(), resting: store.getState(RESTING_KEY) };
   }
 
   /**
@@ -118,6 +131,9 @@ export class ChatService {
     await this.resetBrain();
     this.emit(this.snapshot());
   }
+
+  /** She rests after a goodbye: the initiative scheduler leaves her be until she is up. */
+  get resting() { return Boolean(this.options.store.getState(RESTING_KEY)); }
 
   /** A turn is running or waiting; the initiative scheduler stays out of the way. */
   get busy() { return this.loop !== null; }
@@ -167,6 +183,7 @@ export class ChatService {
     // Reconnecting browsers may resend; the client id makes sending idempotent.
     if (this.seenClientIds.includes(clientId)) return this.loop ?? Promise.resolve();
     this.seenClientIds = [...this.seenClientIds, clientId].slice(-RECENT_CLIENT_IDS);
+    this.wake();
     this.publish(this.options.store.append({ role: 'user', kind: 'text', text }));
     // Consecutive messages waiting in line are answered as one turn.
     const last = this.jobs.at(-1);
@@ -180,7 +197,8 @@ export class ChatService {
    * conversation in progress. She may decline (PASS), which leaves no trace.
    */
   speakUp(request: SpeakUpRequest): Promise<SpeakUpResult> {
-    if (this.busy) return Promise.resolve({ outcome: 'busy', messages: [] });
+    // Resting counts as busy: the moment is not used, and not lost either.
+    if (this.busy || this.resting) return Promise.resolve({ outcome: 'busy', messages: [] });
     return new Promise(settle => {
       this.jobs.push({ type: 'speak_up', request, settle });
       void this.start();
@@ -463,6 +481,37 @@ export class ChatService {
     return paper ? `存好了：「${paper.title || '无题'}」在 Papers 里了，舞台上的也还在。` : '对方面前没有可以存的东西。';
   }
 
+  // ---- rest ----
+
+  /**
+   * The user is leaving and she has said goodbye: she rests until the hour she
+   * is up again, or until the user comes back first. The page dims only once
+   * her goodbye has been heard; that is its to wait for.
+   */
+  private restAsked(): string {
+    const until = (this.options.wakeAt?.(new Date()) ?? new Date(Date.now() + 12 * 3600_000)).toISOString();
+    this.options.store.setState(RESTING_KEY, until);
+    this.scheduleWake(until);
+    this.emit({ type: 'resting', until });
+    return '好，你说完再见就休息了。对方一说话、一碰屏幕，你就醒了；不用再说别的。';
+  }
+
+  private scheduleWake(until: string) {
+    clearTimeout(this.restTimer);
+    // A setTimeout past ~24.8 days fires at once; she never rests that long, but it is capped all the same.
+    this.restTimer = setTimeout(() => this.wake(), Math.min(2 ** 31 - 1, Math.max(0, Date.parse(until) - Date.now())));
+    // Waiting to wake her is no reason to keep the process alive.
+    this.restTimer.unref?.();
+  }
+
+  /** Up again: the user is back, she is talking, or the hour came. Nothing to do if she was up. */
+  wake() {
+    clearTimeout(this.restTimer);
+    if (!this.options.store.getState(RESTING_KEY)) return;
+    this.options.store.setState(RESTING_KEY, null);
+    this.emit({ type: 'resting', until: null });
+  }
+
   private preferencesAsked(patch: PreferencesPatch): string {
     if (!patch.language && !patch.initiative) return '没有要改的。';
     if (!this.options.updatePreferences) return '现在改不了设置。';
@@ -539,6 +588,8 @@ export class ChatService {
         event.respond(live ? this.editPaper(event.paperId, event.ops) : '现在不能改。');
       } else if (event.type === 'paper_save') {
         event.respond(live ? this.savePaperAsked() : '现在不能存。');
+      } else if (event.type === 'rest') {
+        event.respond(live ? this.restAsked() : '现在不能休息：这是你主动开口，不是对方要走。');
       } else if (event.type === 'preferences') {
         event.respond(this.preferencesAsked(event.patch));
       } else if (event.type === 'session_lost') {
@@ -635,6 +686,7 @@ export class ChatService {
   }
 
   async close() {
+    clearTimeout(this.restTimer);
     this.interruptions++;
     for (const job of this.jobs) if (job.type === 'speak_up') job.settle({ outcome: 'stopped', messages: [] });
     this.jobs = [];

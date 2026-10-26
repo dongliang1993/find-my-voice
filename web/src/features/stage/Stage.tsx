@@ -33,7 +33,7 @@ import { useAmbientTheme, type Mood } from '@/features/stage/ambient';
 import { useTimelapse } from '@/features/stage/useTimelapse';
 import { lastTake, latestLine } from '@/features/stage/line';
 import { usePaused } from '@/hooks/useVoice';
-import { STAGE_REST, stageState, VISUALS } from '@/features/stage/state';
+import { ASLEEP, STAGE_REST, stageState, VISUALS } from '@/features/stage/state';
 import { Caption } from '@/features/stage/Caption';
 import type { PaperEdit, SpeechLines } from '@/hooks/useChat';
 
@@ -77,6 +77,10 @@ type Props = {
   settingsStamp: number;
   /** Tells the server which paper is open in Papers, so what the user says next is about it. */
   onReading: (paperId: string | null) => void;
+  /** Until when she rests after a goodbye; null while she is up. */
+  resting: string | null;
+  /** Any touch while she rests. */
+  onWake: () => void;
 };
 
 /**
@@ -91,7 +95,7 @@ type Props = {
  */
 export function Stage({
   messages, status, name, playing, lines, onSend, onInterrupt,
-  needsSetup, online, canListen, arrived, papers, edits, stage, saved, appStatus, settingsStamp, onReading,
+  needsSetup, online, canListen, arrived, papers, edits, stage, saved, appStatus, settingsStamp, onReading, resting, onWake,
 }: Props) {
   const room = useRef<HTMLDivElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
@@ -139,13 +143,28 @@ export function Stage({
   const listening = ear.ear === 'listening';
 
   const state = stageState({ status, playing: playing !== null, listening });
-  const visual = VISUALS[state];
+  // Resting goes dark only once her goodbye has been heard out — never over her own last words.
+  const asleep = Boolean(resting) && state === 'idle';
+  const visual = asleep ? ASLEEP : VISUALS[state];
   const mood = moodOf(messages.at(-1)?.emotion);
   /** A day of light run for recording; while it runs, it paints the room and the chrome is away. */
   const lapsing = useTimelapse(room, mood);
   const ambient = useAmbientTheme(room, mood, { held: lapsing });
   // The buttons step back while nothing is happening; they stay put while you speak.
-  const hidden = useIdleChrome(3000, listening, arrived);
+  const idle = useIdleChrome(3000, listening, arrived);
+  const hidden = idle || asleep;
+
+  // Any touch brings her back: a click, a key, the circle. Not one that only wakes the screen.
+  useEffect(() => {
+    if (!resting) return;
+    const up = (event: Event) => {
+      if (event instanceof KeyboardEvent && ['Shift', 'Control', 'Alt', 'Meta'].includes(event.key)) return;
+      onWake();
+    };
+    window.addEventListener('pointerdown', up);
+    window.addEventListener('keydown', up);
+    return () => { window.removeEventListener('pointerdown', up); window.removeEventListener('keydown', up); };
+  }, [resting, onWake]);
 
   // She draws breath once as she starts to think.
   useEffect(() => { if (state === 'thinking') audio.breath(); }, [state]);

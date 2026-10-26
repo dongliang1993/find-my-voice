@@ -8,6 +8,7 @@ import { z } from 'zod';
 import type { ServerEvent } from '../shared/protocol.js';
 import { linkUrl } from '../shared/links.js';
 import { openExternal } from './open.js';
+import { DEFAULT_IDENTITY, readProfileDocument, writeProfileDocument } from './profile/profile.js';
 import { clientEventSchema } from './chat/client-events.js';
 import { maskSettings, settingsPatchSchema } from './config.js';
 import { DomainError, errorPayload } from './errors.js';
@@ -145,6 +146,12 @@ export function createHttp(app: App, webRoot: string) {
     return c.body(await readFile(path), 200, { 'Content-Type': 'audio/wav', 'Cache-Control': 'private, max-age=31536000, immutable' });
   });
 
+  // A line she only typed, said aloud on request; the voice streams over the socket like any other.
+  http.post('/api/messages/:id/voice', c => {
+    const audioId = app.chat.voiceMessage(c.req.param('id'));
+    return audioId ? c.json({ audioId }) : c.json({ code: 'NOT_SPEAKABLE', message: '这句没法读出来' }, 409);
+  });
+
   // ---- letters ----
   const noLetter = { code: 'NOT_FOUND', message: '这封信不在了' };
   http.post('/api/letters/:id/open', c => {
@@ -166,20 +173,41 @@ export function createHttp(app: App, webRoot: string) {
     return c.json({ url });
   });
 
+  // ---- profile ----
+
+  // Who she is, as the settings page edits it: the default stands in until the file exists.
+  http.get('/api/profile/identity', c => {
+    const doc = readProfileDocument(app.dataDir, 'identity');
+    return c.json({ content: doc.content ?? DEFAULT_IDENTITY, sha256: doc.sha256 });
+  });
+  http.put('/api/profile/identity', async c => {
+    const body = await c.req.json().catch(() => null) as { content?: unknown; baseSha256?: unknown } | null;
+    if (typeof body?.content !== 'string' || (body.baseSha256 !== null && typeof body.baseSha256 !== 'string')) {
+      return c.json({ code: 'INVALID_PROFILE', message: '格式不对' }, 400);
+    }
+    const doc = writeProfileDocument(app.dataDir, 'identity', body.content, body.baseSha256);
+    return c.json({ content: doc.content ?? body.content, sha256: doc.sha256 });
+  });
+
+  // Her two pages, opened in whatever edits Markdown on this machine. The path
+  // is built here from the name — never taken from the request.
+  http.post('/api/profile/:name/open', c => {
+    const name = c.req.param('name');
+    if (name !== 'identity' && name !== 'memory') return c.json({ code: 'NOT_FOUND', message: '没有这份文档' }, 404);
+    let doc = readProfileDocument(app.dataDir, name);
+    if (doc.content === null) doc = writeProfileDocument(app.dataDir, name, name === 'identity' ? '# 我是谁\n' : '# 关于你\n', null);
+    openExternal(doc.path);
+    return c.body(null, 204);
+  });
+
   // ---- notes ----
 
   // Closed on the page: nothing is kept, nothing is asked.
   http.delete('/api/note', c => (app.chat.closeNote() ? c.body(null, 204) : c.body(null, 204)));
-  // Taken off the table and kept: the dock holds it from here.
+  // Kept: signed, it is a letter in the inbox from here.
   http.post('/api/note/file', c => {
-    const filed = app.chat.fileNote();
-    return filed ? c.json(filed) : c.json({ code: 'NOT_FOUND', message: '桌上没有便签' }, 404);
-  });
-  // One of the dock's notes, back on the table.
-  http.post('/api/note/unfile', async c => {
-    const body = await c.req.json().catch(() => null) as { noteId?: unknown } | null;
-    const note = typeof body?.noteId === 'string' ? app.chat.unfileNote(body.noteId) : null;
-    return note ? c.json(note) : c.json({ code: 'NOT_FOUND', message: '没有这张便签' }, 404);
+    const letter = app.chat.fileNote();
+    return letter ? c.json(letter) : c.json({ code: 'NOT_FOUND', message: '桌上没有便签' }, 404);
   });
   // The user's own hand on a block: no ops, no playthrough.
   http.patch('/api/note/blocks/:blockId', async c => {
@@ -220,7 +248,12 @@ export function createHttp(app: App, webRoot: string) {
         }
         const message = parsed.data;
         if (message.type === 'send') void app.chat.send(message.clientId, message.text);
-        else if (message.type === 'presence') app.presence.set(viewer, message.visible);
+        else if (message.type === 'presence') {
+          const seen = app.presence.get(viewer);
+          app.presence.set(viewer, message.visible);
+          // Opening the app is when an opening is worth most; the gate still decides whether there is one.
+          if (message.visible && !seen) void app.initiative.tick();
+        }
         else if (message.type === 'reading') app.chat.setReading(message.letterId);
         else void app.chat.interrupt();
       },

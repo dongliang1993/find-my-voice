@@ -4,6 +4,9 @@
 // A line break ends a sentence too: a list with its markers stripped is one
 // item per line, often with no punctuation, and should still read item by item.
 const END = /[。！？!?；;…~～]+|\.(?=\s|$)|\n+/u;
+/** A piece that finishes a sentence: its end mark, then any closing quotes or brackets. */
+const ENDED = /(?:[。！？!?；;…~～]|\.)["'”’」』）)】]*$/u;
+export const endsSentence = (text: string) => ENDED.test(text.trim());
 const CLOSERS = /^["'”’」』）)】]+/u;
 const SOFT_BREAK = /[，,、：:\s]/u;
 
@@ -16,7 +19,7 @@ const SOFT_BREAK = /[，,、：:\s]/u;
  * Latin letter takes about half the room of a Chinese one, so a flat character
  * count cuts English into fragments too short to read.
  */
-type Options = { minChars?: number; maxChars?: number; firstMaxChars?: number; measure?: (text: string) => number };
+type Options = { minChars?: number; maxChars?: number; firstMaxChars?: number; measure?: (text: string) => number; wrap?: boolean };
 const length = (text: string) => [...text].length;
 
 /**
@@ -75,8 +78,13 @@ function shortenFirst(pieces: string[], limit: number, measure: (text: string) =
   return pieces;
 }
 
-export function splitSentences(text: string, { minChars = 1, maxChars = 120, firstMaxChars, measure = length }: Options = {}): string[] {
-  const pieces = rawSentences(text).map(s => s.trim()).filter(Boolean).flatMap(s => hardWrap(s, maxChars, measure));
+/**
+ * `wrap: false` never cuts inside a sentence; `maxChars` then only caps how
+ * far short sentences are merged. Subtitles want that: half a sentence on
+ * screen with the rest of it already gone reads as two thoughts.
+ */
+export function splitSentences(text: string, { minChars = 1, maxChars = 120, firstMaxChars, measure = length, wrap = true }: Options = {}): string[] {
+  const pieces = rawSentences(text).map(s => s.trim()).filter(Boolean).flatMap(s => (wrap ? hardWrap(s, maxChars, measure) : [s]));
   const merged = pieces.reduce<string[]>((merged, piece) => {
     const last = merged.at(-1);
     if (last !== undefined && measure(last) < minChars && measure(last) + measure(piece) <= maxChars) {

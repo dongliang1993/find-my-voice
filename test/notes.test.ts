@@ -112,9 +112,9 @@ test('the card goes up the moment the call starts, and grows line by line', asyn
   const { store, noteEvents, mk } = service();
   const { chat } = mk(play(
     { type: 'note_start', noteId: 'N1' },
-    { type: 'note_progress', noteId: 'N1', title: '出门前', blocks: blocks([{ type: 'paragraph', text: '雨还在下' }]) },
-    { type: 'note_progress', noteId: 'N1', title: '出门前', blocks: blocks([{ type: 'paragraph', text: '雨还在下' }, { type: 'heading', text: '要带的东西' }]) },
-    { type: 'note_done', noteId: 'N1', title: '出门前', blocks: blocks([{ type: 'paragraph', text: '雨还在下' }, { type: 'heading', text: '要带的东西' }, { type: 'item', name: '伞', note: '楼下那把黑的' }]) },
+    { type: 'note_progress', noteId: 'N1', title: '出门前', fresh: false, blocks: blocks([{ type: 'paragraph', text: '雨还在下' }]) },
+    { type: 'note_progress', noteId: 'N1', title: '出门前', fresh: false, blocks: blocks([{ type: 'paragraph', text: '雨还在下' }, { type: 'heading', text: '要带的东西' }]) },
+    { type: 'note_done', noteId: 'N1', title: '出门前', fresh: false, blocks: blocks([{ type: 'paragraph', text: '雨还在下' }, { type: 'heading', text: '要带的东西' }, { type: 'item', name: '伞', note: '楼下那把黑的' }]) },
   ));
   await chat.send(randomUUID(), '帮我列一张出门前的清单');
   assert.deepEqual(noteEvents().map(n => `${n.status}:${n.blocks.length}`),
@@ -127,8 +127,8 @@ test('a second call appends without doubling what the first wrote', async () => 
   const { store, noteEvents, mk } = service();
   const { chat } = mk(play(
     { type: 'note_start', noteId: 'N1' },
-    { type: 'note_progress', noteId: 'N1', title: '出门前', blocks: blocks([{ type: 'paragraph', text: '雨还在下' }]) },
-    { type: 'note_done', noteId: 'N1', title: '出门前', blocks: blocks([{ type: 'paragraph', text: '雨还在下' }]) },
+    { type: 'note_progress', noteId: 'N1', title: '出门前', fresh: false, blocks: blocks([{ type: 'paragraph', text: '雨还在下' }]) },
+    { type: 'note_done', noteId: 'N1', title: '出门前', fresh: false, blocks: blocks([{ type: 'paragraph', text: '雨还在下' }]) },
   ));
   await chat.send(randomUUID(), '列一张出门清单');
   const first = store.note()!;
@@ -137,9 +137,9 @@ test('a second call appends without doubling what the first wrote', async () => 
   // when it began, so its ticks replace only what it has written.
   const { chat: chat2 } = mk(play(
     { type: 'note_start', noteId: 'N2' },
-    { type: 'note_progress', noteId: 'N2', title: '再带一件', blocks: blocks([{ type: 'item', name: '外套', note: '玄关椅子上那件' }]) },
-    { type: 'note_progress', noteId: 'N2', title: '再带一件', blocks: blocks([{ type: 'item', name: '外套', note: '玄关椅子上那件' }, { type: 'item', name: '围巾', note: '第二条' }]) },
-    { type: 'note_done', noteId: 'N2', title: '再带一件', blocks: blocks([{ type: 'item', name: '外套', note: '玄关椅子上那件' }, { type: 'item', name: '围巾', note: '第二条' }]) },
+    { type: 'note_progress', noteId: 'N2', title: '再带一件', fresh: false, blocks: blocks([{ type: 'item', name: '外套', note: '玄关椅子上那件' }]) },
+    { type: 'note_progress', noteId: 'N2', title: '再带一件', fresh: false, blocks: blocks([{ type: 'item', name: '外套', note: '玄关椅子上那件' }, { type: 'item', name: '围巾', note: '第二条' }]) },
+    { type: 'note_done', noteId: 'N2', title: '再带一件', fresh: false, blocks: blocks([{ type: 'item', name: '外套', note: '玄关椅子上那件' }, { type: 'item', name: '围巾', note: '第二条' }]) },
   ));
   await chat2.send(randomUUID(), '再加两件');
   const appended = store.note()!;
@@ -166,7 +166,7 @@ test('a call stopped with lines on it is finished there, not broken', async () =
   const { store, noteEvents, mk } = service();
   const { chat } = mk(play(
     { type: 'note_start', noteId: 'N1' },
-    { type: 'note_progress', noteId: 'N1', title: '出门前', blocks: blocks([{ type: 'paragraph', text: '雨还在下' }, { type: 'heading', text: '要带的东西' }]) },
+    { type: 'note_progress', noteId: 'N1', title: '出门前', fresh: false, blocks: blocks([{ type: 'paragraph', text: '雨还在下' }, { type: 'heading', text: '要带的东西' }]) },
     { type: 'error', code: 'BRAIN_OVERLOADED', message: '模型服务繁忙，稍后再试。' },
   ));
   await chat.send(randomUUID(), '列一张出门清单');
@@ -180,8 +180,8 @@ test('a check line keeps its box and its tick', async () => {
   const s = service();
   const { chat } = s.mk(play(
     { type: 'note_start', noteId: 'N1' },
-    { type: 'note_progress', noteId: 'N1', title: '出门前', blocks: blocks([{ type: 'check', text: '带伞', done: false }]) },
-    { type: 'note_done', noteId: 'N1', title: '出门前', blocks: blocks([
+    { type: 'note_progress', noteId: 'N1', title: '出门前', fresh: false, blocks: blocks([{ type: 'check', text: '带伞', done: false }]) },
+    { type: 'note_done', noteId: 'N1', title: '出门前', fresh: false, blocks: blocks([
       { type: 'check', text: '带伞', done: false },
       { type: 'check', text: '拿钥匙', done: true },
     ]) },
@@ -197,53 +197,91 @@ test('a check line keeps its box and its tick', async () => {
   assert.equal(ticked.version, note.version + 1, 'a tick is an edit like any other');
 });
 
-test('a note filed away is kept in the dock, and comes back from it', async () => {
-  const s = service();
-  const { chat } = s.mk(play(
+test('a note kept goes into the inbox as a signed letter, and the table is empty', async () => {
+  const store = new ChatStore(dir());
+  const events: ServerEvent[] = [];
+  const brain = new ScriptedBrain([play(
     { type: 'note_start', noteId: 'N1' },
-    { type: 'note_done', noteId: 'N1', title: '出门前', blocks: blocks([
+    { type: 'note_done', noteId: 'N1', title: '出门前', fresh: false, blocks: blocks([
       { type: 'paragraph', text: '雨还在下' },
       { type: 'check', text: '带伞', done: false },
     ]) },
-  ));
+  )]);
+  const chat = new ChatService({ store, createBrain: () => brain, voice: { speak: okVoice }, signature: () => '小雨' });
+  chat.subscribe(e => events.push(e));
   await chat.send(randomUUID(), '列一张出门清单');
-  const note = s.store.note()!;
+  const note = store.note()!;
 
-  // Filed: off the table, into the dock. The table is empty after.
-  const filed = chat.fileNote()!;
-  assert.equal(filed.length, 1);
-  assert.equal(s.store.note(), null, 'only one note is ever on the table');
-  assert.equal(s.store.filedNotes()[0]?.blocks.length, 2, 'what the dock holds');
-  assert.ok(s.events.some(e => e.type === 'note_filed' && e.noteId === note.id));
-  assert.equal(s.store.filedNotes()[0]?.status, 'done', 'a note never breaks: filed, it is finished');
-
-  // Back on the table: the dock holds one less, the note keeps its id.
-  const back = chat.unfileNote(note.id)!;
-  assert.equal(back.id, note.id);
-  assert.equal(back.blocks.length, 2);
-  assert.equal(s.store.filedNotes().length, 0, 'it left the dock');
-  assert.equal(s.store.note()?.id, note.id, 'it is the one on the table again');
-  assert.ok(s.noteEvents().some(n => n.id === note.id));
-  // The dock is told too: every page drops the icon, not only this one.
-  const unfiled = s.events.filter(e => e.type === 'note_unfiled');
-  assert.equal(unfiled.length, 1);
-  assert.deepEqual(unfiled[0]!.filedNotes, [], 'the event carries the dock as it now stands');
+  const letter = chat.fileNote()!;
+  assert.equal(store.note(), null, 'only one note is ever on the table, and this one left it');
+  assert.equal(letter.signature, '小雨', 'she signs it');
+  assert.equal(letter.title, '出门前');
+  assert.equal(letter.status, 'done');
+  assert.equal(letter.openedAt, null, 'unread: the inbox lights');
+  assert.deepEqual(letter.blocks.map(b => b.type), ['paragraph', 'check']);
+  assert.equal(store.letters()[0]?.id, letter.id, 'it is in the inbox');
+  assert.ok(events.some(e => e.type === 'note_filed' && e.noteId === note.id && e.letter.id === letter.id));
+  assert.ok(store.recent().some(m => m.kind === 'letter' && m.letterId === letter.id), 'the history says she gave it');
+  assert.equal(chat.fileNote(), null, 'nothing left to keep');
 });
 
-test('a filed note survives a new note on the table and a restart', () => {
+test('she keeps the note herself when asked out loud', async () => {
+  const s = service();
+  let answer = '';
+  const { chat } = s.mk(
+    play({ type: 'note_start', noteId: 'N1' }, { type: 'note_done', noteId: 'N1', title: '采购', fresh: false, blocks: blocks([{ type: 'item', name: '酱油' }]) }),
+    play({ type: 'note_keep', respond: r => { answer = r; } }),
+  );
+  await chat.send(randomUUID(), '写个采购单');
+  await chat.send(randomUUID(), '留着');
+  assert.equal(s.store.note(), null);
+  assert.equal(s.store.letters().length, 1);
+  assert.match(answer, /信箱/);
+});
+
+test('a note kept before notes became letters moves into the inbox once', () => {
   const path = dir();
   const store = new ChatStore(path);
-  const note = store.putNote({ title: '采购', blocks: blocks([{ type: 'item', name: '酱油' }]), status: 'done' });
-  store.fileNote(note);
-  // A new note on the table wipes only the table — the dock is apart from it.
-  store.putNote({ title: '新的', blocks: [paragraph('换了')] });
-  assert.equal(store.filedNotes().length, 1, 'the dock keeps its own');
+  // The old table, as an earlier version left it.
+  (store as unknown as { db: { prepare(sql: string): { run(...a: unknown[]): void } } }).db
+    .prepare('INSERT INTO filed_notes (id, title, status, version, blocks_json, created_at) VALUES (?, ?, ?, ?, ?, ?)')
+    .run('old', '采购', 'done', 1, JSON.stringify(blocks([{ type: 'item', name: '酱油' }])), '2026-01-02T00:00:00.000Z');
+  const moved = store.moveFiledNotes('小雨');
+  assert.equal(moved.length, 1);
+  assert.equal(moved[0]?.createdAt, '2026-01-02T00:00:00.000Z', 'dated when it was written');
+  assert.equal(store.moveFiledNotes('小雨').length, 0, 'once');
   store.close();
-
   const reopened = new ChatStore(path);
-  assert.equal(reopened.filedNotes().length, 1, 'a leftover note on the table counts as closed; a filed one is kept');
-  assert.equal(reopened.note(), null, 'the table starts empty');
+  assert.equal(reopened.letters().length, 1, 'and it stays');
   reopened.close();
+});
+
+test('a new topic wipes the note and writes it again; the same topic writes on', async () => {
+  const s = service();
+  const { chat } = s.mk(
+    play({ type: 'note_start', noteId: 'N1' }, { type: 'note_done', noteId: 'N1', title: '今天要做的事', fresh: false, blocks: blocks([{ type: 'check', text: '交报告', done: false }]) }),
+    play({ type: 'note_start', noteId: 'N2' }, { type: 'note_done', noteId: 'N2', title: '今天要做的事', fresh: false, blocks: blocks([{ type: 'check', text: '回邮件', done: false }]) }),
+    play(
+      { type: 'note_start', noteId: 'N3' },
+      { type: 'note_progress', noteId: 'N3', title: '周末', fresh: true, blocks: [] },
+      { type: 'note_progress', noteId: 'N3', title: '周末', fresh: true, blocks: blocks([{ type: 'paragraph', text: '去海边' }]) },
+      { type: 'note_done', noteId: 'N3', title: '周末', fresh: true, blocks: blocks([{ type: 'paragraph', text: '去海边' }, { type: 'paragraph', text: '带相机' }]) },
+    ),
+  );
+  await chat.send(randomUUID(), '列一下今天的事');
+  const first = s.store.note()!;
+  await chat.send(randomUUID(), '再加一件');
+  assert.equal(s.store.note()?.blocks.length, 2, 'the same topic: written on');
+
+  const before = s.noteEvents().length;
+  await chat.send(randomUUID(), '说说周末');
+  const note = s.store.note()!;
+  assert.equal(note.id, first.id, 'the same card, where it was');
+  assert.equal(note.title, '周末');
+  assert.deepEqual(note.blocks.map(b => b.type === 'paragraph' && b.text), ['去海边', '带相机'], 'what was there is gone');
+  const during = s.noteEvents().slice(before);
+  assert.ok(during.every(n => n.blocks.length > 0), 'never blank in between: the old lines stay until the first new one lands');
+  assert.equal(note.status, 'done');
 });
 
 test('a check written by the model comes out described, done or not', () => {
@@ -279,7 +317,7 @@ test('the whole card rewritten by hand keeps no ids and answers to none twice', 
   const s = service();
   const { chat } = s.mk(play(
     { type: 'note_start', noteId: 'N1' },
-    { type: 'note_done', noteId: 'N1', title: '出门前', blocks: blocks([
+    { type: 'note_done', noteId: 'N1', title: '出门前', fresh: false, blocks: blocks([
       { type: 'paragraph', text: '雨还在下' },
       { type: 'check', text: '带伞', done: false },
     ]) },

@@ -7,9 +7,15 @@ import { cn } from '@/lib/utils';
 
 /** The circle's diameter, which is also the capsule's height. */
 const SIZE = 48;
+/** Inside the capsule the circle sits this far in from its top, bottom and right end. */
+const INSET = 6;
+/** The circle, shrunk to fit inside the capsule's end. A scale, so the icon keeps its proportion. */
+const TUCKED = (SIZE - INSET * 2) / SIZE;
 /** An empty capsule that has lost focus folds back after this long. */
 const FOLD_MS = 3000;
-const MORPH = { type: 'spring', stiffness: 380, damping: 34, mass: 0.9 } as const;
+const ICON = 'size-[17px]';
+/** The capsule opening out of the circle and folding back into it. */
+const MORPH = { duration: 0.35, ease: [0.32, 0.72, 0, 1] } as const;
 
 /** Somewhere the keyboard already belongs to: typing there is not typing to her. */
 const EDITABLE = 'input, textarea, select, [contenteditable="true"], [role="dialog"]';
@@ -36,10 +42,11 @@ type Props = {
   /** Ends a recording and throws it away: the user started typing. */
   onCancel: () => void;
   label: string;
+  placeholder?: string;
   maxLength?: number;
   className?: string;
-  /** Told when the circle grows into a field and back, for whatever sits beside it. */
-  onOpenChange?: (open: boolean) => void;
+  /** Told when the user is at the field — open and focused — and when they leave it or send. */
+  onTypingChange?: (typing: boolean) => void;
 };
 
 /**
@@ -54,11 +61,12 @@ type Props = {
  * input method, which can only compose into a field that was focused before
  * the key arrived.
  */
-export function Orb({ ear, canSpeak, dim = false, disabled = false, autoOpen = false, value, onChange, onSend, onStart, onStop, onCancel, label, maxLength = 4000, className, onOpenChange }: Props) {
+export function Orb({ ear, canSpeak, dim = false, disabled = false, autoOpen = false, value, onChange, onSend, onStart, onStop, onCancel, label, placeholder, maxLength = 4000, className, onTypingChange }: Props) {
   const [open, setOpen] = useState(autoOpen);
-  const told = useRef(onOpenChange);
-  told.current = onOpenChange;
-  useEffect(() => { told.current?.(open); }, [open]);
+  const [focused, setFocused] = useState(false);
+  const told = useRef(onTypingChange);
+  told.current = onTypingChange;
+  useEffect(() => { told.current?.(open && focused); }, [open, focused]);
   const field = useRef<HTMLInputElement>(null);
   const fold = useRef<number | undefined>(undefined);
   const still = useReducedMotion() ?? false;
@@ -148,51 +156,70 @@ export function Orb({ ear, canSpeak, dim = false, disabled = false, autoOpen = f
   };
 
   const press = () => {
-    if (open) { if (ready) send(); else shrink(); return; }
+    if (open) {
+      if (ready) send();
+      // Empty, the button is the microphone again: talking folds the field away.
+      else if (canSpeak && !hearing) { shrink(); onStart('tap'); }
+      else shrink();
+      return;
+    }
     if (!canSpeak) { grow(); field.current?.focus(); return; }
     if (hearing) return;
     if (listening) onStop();
     else onStart('tap');
   };
 
-  const name = open ? 'Send' : !canSpeak ? 'Type' : hearing ? 'Working it out' : listening ? 'Stop' : 'Talk';
+  /** One icon at a time; in the field it is the microphone until there is something to send. */
+  const icon = open ? (ready || !canSpeak ? 'send' : 'mic')
+    : hearing ? 'busy' : listening ? 'stop' : canSpeak ? 'mic' : 'type';
+  const name = { send: 'Send', mic: 'Talk', busy: 'Working it out', stop: 'Stop', type: 'Type' }[icon];
   const transition = still ? { duration: 0 } : MORPH;
+  const layer = (shown: boolean) => cn('[grid-area:1/1] transition-opacity duration-150', shown ? 'opacity-100' : 'opacity-0');
 
   return (
     <form className={cn('relative flex h-12 w-[min(384px,86vw)] items-center', open ? 'justify-end' : 'justify-center', className)}
       onSubmit={event => { event.preventDefault(); send(); }}>
-      {/* The capsule's body. It grows out of the circle to both sides, so it is centred and only its width moves. */}
+      {/* The capsule, one whole outline. It opens out from behind the circle as the circle slides to its
+          right end, both on the same curve, so its end stays wrapped around the circle all the way. */}
       <motion.div aria-hidden="true" initial={false}
         animate={{ width: open ? '100%' : SIZE, opacity: open ? 1 : 0 }} transition={transition}
-        className="absolute inset-y-0 right-0 left-0 mx-auto rounded-full border border-(--orb-edge) bg-(--orb-field)" />
+        className="absolute inset-y-0 left-0 right-0 mx-auto rounded-full border border-(--orb-edge) bg-(--orb-field) backdrop-blur-md" />
+      {/* The words stop short of the circle: its width and a 12px gap. */}
       <input ref={field} value={value} disabled={disabled} maxLength={maxLength} aria-label={label} tabIndex={open ? 0 : -1}
-        enterKeyHint="send" autoComplete="off"
+        enterKeyHint="send" autoComplete="off" placeholder={placeholder}
         onChange={event => { typed.current = true; if (!open) grow(); onChange(event.target.value); }}
         onCompositionStart={() => { if (!open) grow(); }}
         onKeyDown={onKeyDown}
-        onFocus={() => window.clearTimeout(fold.current)}
+        onFocus={() => { setFocused(true); window.clearTimeout(fold.current); }}
         onBlur={() => {
+          setFocused(false);
           if (!open || value.trim()) return;
           window.clearTimeout(fold.current);
           fold.current = window.setTimeout(() => setOpen(false), FOLD_MS);
         }}
-        className={cn('absolute inset-y-0 left-0 right-12 min-w-0 bg-transparent pl-5 text-[15px] text-(--orb-text) caret-(--orb-text) outline-none transition-opacity',
+        style={{ paddingRight: SIZE }}
+        className={cn('absolute inset-0 min-w-0 bg-transparent pl-5 text-[15px] text-(--orb-text) caret-(--orb-text) outline-none transition-opacity placeholder:text-(--orb-text)/60',
           open ? 'opacity-100 delay-100 duration-300' : 'pointer-events-none opacity-0 duration-100')} />
 
-      <motion.div layout="position" transition={transition} className="relative z-10">
+      <motion.div layout="position" initial={false} animate={{ scale: open ? TUCKED : 1 }} transition={transition} className="relative z-10">
         <div className={cn('relative transition-[opacity,scale] duration-500', dim && !open && 'scale-92 opacity-45')}>
           <VoiceRing live={listening} size={SIZE} />
+          {/* In the capsule the circle turns solid: nothing of the outline shows through it. */}
           <button type="button" onClick={press} disabled={disabled}
             aria-label={name} title={name} aria-pressed={!open && canSpeak ? listening : undefined}
-            className={cn('relative grid size-12 place-items-center rounded-full bg-(--orb) text-(--orb-ink) transition-[background-color,color,opacity,scale] duration-700',
-              'shadow-[0_10px_24px_-12px_var(--orb)] hover:scale-[1.04] active:scale-95',
+            className={cn('relative grid size-12 place-items-center rounded-full text-(--orb-ink) transition-[background-color,box-shadow,scale] duration-300',
+              'hover:scale-[1.04] active:scale-95',
               'focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-(--orb)',
-              !open && !listening && !hearing && 'orb-breathe',
-              open && !ready && 'opacity-60')}>
-            {open ? <ArrowUp className="size-4" strokeWidth={2.4} />
-              : hearing ? <Loader2 className="size-4 animate-spin" />
-                : listening ? <Square className="size-3.5 fill-current" />
-                  : canSpeak ? <Mic className="size-4" /> : <Keyboard className="size-4" />}
+              open ? 'bg-(--orb-solid)' : 'bg-(--orb) shadow-(--orb-glow)',
+              !open && !listening && !hearing && 'orb-breathe')}>
+            {/* Every icon the same size, a little over a third of the circle. */}
+            <span className="grid place-items-center">
+              <ArrowUp className={cn(ICON, layer(icon === 'send'))} />
+              <Mic className={cn(ICON, layer(icon === 'mic'))} />
+              <Loader2 className={cn(ICON, layer(icon === 'busy'), icon === 'busy' && 'animate-spin')} />
+              <Square className={cn('size-3.5 fill-current', layer(icon === 'stop'))} />
+              <Keyboard className={cn(ICON, layer(icon === 'type'))} />
+            </span>
           </button>
         </div>
       </motion.div>

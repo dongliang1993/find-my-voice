@@ -41,8 +41,16 @@ export const editLetterShape = {
 
 /** The input of `write_note`: the same blocks a letter is made of, no id to name. */
 export const writeNoteShape = {
-  title: z.string().describe('便签的标题，几个字，比如「今晚的安排」'),
+  // First, so it streams in before any line: the card knows whether to wipe or append.
+  fresh: z.boolean().optional().describe('换了一个新话题时填 true：擦掉桌上那张重写；同一件事接着写就不填'),
+  title: z.string().describe('便签的标题，几个字，比如「今天要做的事」'),
   blocks: z.array(looseBlock).describe('便签的内容，从上到下'),
+};
+
+/** The input of `update_preferences`: only what the user asked to change. */
+export const preferencesShape = {
+  language: z.enum(['auto', 'zh', 'en']).optional().describe('回复用的语言：zh 中文、en 英文、auto 跟着对方说的语言'),
+  initiative: z.enum(['off', 'occasional', 'often']).optional().describe('主动找对方的频率：off 不主动、occasional 偶尔、often 经常'),
 };
 
 /** The input of `edit_note`: there is only ever one note, so no id to name. */

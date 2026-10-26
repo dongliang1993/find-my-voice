@@ -5,9 +5,9 @@ import { createSdkMcpServer, query, tool, type Query, type SDKMessage, type SDKU
 import { z } from 'zod';
 import { AsyncQueue } from './queue.js';
 import { parsePartialJson } from '../letters/partial.js';
-import { describeLetter, describeNote, editLetterShape, editNoteShape, toBlocks, toTitle, writeLetterShape, writeNoteShape } from '../letters/schema.js';
+import { describeLetter, describeNote, editLetterShape, editNoteShape, preferencesShape, toBlocks, toTitle, writeLetterShape, writeNoteShape } from '../letters/schema.js';
 import type { BrainAuth } from './auth.js';
-import type { Brain, BrainSink } from './types.js';
+import type { Brain, BrainSink, PreferencesPatch } from './types.js';
 
 export type ClaudeBrainOptions = {
   auth: BrainAuth;
@@ -25,13 +25,15 @@ const LETTER_TOOL = `mcp__${TOOL_SERVER}__write_letter`;
 const EDIT_TOOL = `mcp__${TOOL_SERVER}__edit_letter`;
 const NOTE_TOOL = `mcp__${TOOL_SERVER}__write_note`;
 const EDIT_NOTE_TOOL = `mcp__${TOOL_SERVER}__edit_note`;
+const KEEP_NOTE_TOOL = `mcp__${TOOL_SERVER}__keep_note`;
+const PREFERENCES_TOOL = `mcp__${TOOL_SERVER}__update_preferences`;
 /** How often a letter or note still being written is sent on. The pen is slower than the model; finer adds nothing. */
 const LETTER_PROGRESS_MS = 150;
 
 const WRITE_LETTER_DESCRIPTION = `把值得留下的内容写成一封信交给对方。信不会被念出来，对方会在信纸上看你写。
 什么时候写信：一组可以挑的东西（3 个及以上的电影、歌、书、地点）；有步骤或结构的内容（计划、菜谱、清单）；对方明确要你写下来的东西（一首诗、一段话、一封信）；对方要你总结一段长对话。
 什么时候不写、只说话：闲聊、安慰、回答简单的问题、只推荐一个、不到 3 条或很短的内容、对方正在倾诉情绪。拿不准就只说话。
-写信时：先用 send_voice 或文字说一两句口语，带一点你自己的看法（比如「如果只看一部，我会选《花样年华》」），告诉对方你写给他了；不要复述信的内容。然后再调用这个工具。
+写信时：先用 send_voice 或文字说一两句口语，带一点你自己的看法（比如「如果只看一部，我会选《花样年华》」），明确说你写了一封信、放进了信箱（比如「我写了封信给你，在信箱里」），不要说「在这里」「在里面」；不要复述信的内容。然后再调用这个工具。
 信的写法：title 是几个字的标题；blocks 从上到下，paragraph 是一段话，heading 是小标题（比如「电影」「歌」），item 是一个条目（name 是名字，note 是一句你的理由，不超过 20 个字，可以加 link 让对方点开去找）。每组条目最多 5 条，整封信不超过约 400 字。
 任何字段都不要写 HTML、Markdown 符号、序号或网址。`;
 
@@ -39,15 +41,22 @@ const EDIT_LETTER_DESCRIPTION = `修改一封已经交给对方、对方也看�
 blockId 用这封信每一块的 id（写信和改信的结果里都列着）。改之前先用一句口语回应，比如「好，换一首安静点的」。
 对方说得不明确（比如只说「换一个」）就先问清楚是哪一个，不要猜。对方要整封重写，就说一句「我重新写一封」，然后用 write_letter 写一封新的。`;
 
-const WRITE_NOTE_DESCRIPTION = `把临时要看的内容写成一张便签，摆在对方手边。便签比信轻：看完就收走，不留底。
-什么时候写便签：清单、步骤、安排、三五条要做的事，这种当下用一下就没有了的内容。
-什么时候写信、不写便签：值得留下的东西（要收藏的推荐、要回头看的计划、对方要你写下来的话）用 write_letter。
-便签同时只有一张：已经有一张时，新的内容接在后面写（append），不要另起一张。写法和信一样：title 几个字，blocks 从上到下，item 的 name 是条目、note 是一句话说明。
+const WRITE_NOTE_DESCRIPTION = `把当下要用的内容写成一张便签，摆在舞台旁边。便签比信轻：看完就收走；对方想留着，会收进信箱。
+什么时候写便签：清单、步骤、安排、三五条要做的事，这种当下用一下的内容。
+什么时候写信、不写便签：值得留下的东西（要收藏的推荐、对方要你写下来的话）用 write_letter。
+便签同时只有一张。已经有一张时：还是同一件事，就接着往下写（或者用 edit_note 改）；换了一个新话题，就填 fresh: true，擦掉重写——旧的内容对话里还留着。
+写法和信一样：title 几个字（比如「今天要做的事」），blocks 从上到下，item 的 name 是条目、note 是一句话说明。
 要办的事（todo、待办、出门带什么、今天做哪几件事）用 check 块：text 是这件事，done 填 false；对方做完一件会自己勾上。对方说某一件办完了，用 edit_note 把那块换成 done: true。
+写的时候先说一句口语，明确说你写在了一张小便签上（比如「我写在一张小便签上了，放你旁边」），不要说「在这里」「在里面」。
 便签要短，几行就够。任何字段都不要写 HTML、Markdown 符号、序号或网址。`;
 
 const EDIT_NOTE_DESCRIPTION = `修改桌上那张便签：换掉、删掉或加上其中一块。只给出改动，不要重写整张。
 blockId 用便签每一块的 id（写便签的结果里列着）。便签很轻，改一两句就行，不要当成信来改。`;
+
+const KEEP_NOTE_DESCRIPTION = `对方想留着桌上那张便签（比如说「留着」「收起来」「帮我存一下」）：你在末尾签上名，它就变成一封信收进信箱。调用前先用一句口语回应，比如「好，我签个名收进信箱」。`;
+
+const PREFERENCES_DESCRIPTION = `对方明确要你改一个习惯时用：「以后用中文跟我说」改 language；「这几天别主动找我」「可以多找我聊」改 initiative。只填对方要改的那一项。
+改完用一句口语确认，比如「好，以后跟你说中文」「好，这几天我不主动找你」。对方只是随口一说、没有要你改的意思，就不要用。`;
 
 type Streaming = { tool: string; json: string; letterId?: string; noteId?: string; sentAt: number; sent: string };
 
@@ -126,13 +135,13 @@ export class ClaudeBrain implements Brain {
       return { content: [{ type: 'text', text: result }] };
     });
 
-    const writeNote = tool('write_note', WRITE_NOTE_DESCRIPTION, writeNoteShape, async ({ title, blocks }) => {
+    const writeNote = tool('write_note', WRITE_NOTE_DESCRIPTION, writeNoteShape, async ({ title, blocks, fresh }) => {
       // As with a letter: the card went up as the call started streaming; if it
       // did not, it goes up now. Whether this is a new note or lines added to
       // the one already there is the chat layer's to decide.
       const noteId = this.notesStarted.shift() ?? this.startNote();
       const note = { id: noteId, title: toTitle(title) || '便签', blocks: toBlocks(blocks) };
-      this.sink?.({ type: 'note_done', noteId, title: note.title, blocks: note.blocks });
+      this.sink?.({ type: 'note_done', noteId, title: note.title, blocks: note.blocks, fresh: fresh === true });
       if (!note.blocks.length) {
         return { content: [{ type: 'text', text: '这张便签没写成：里面没有一块是完整的。不要再试，口头回应就好。' }] };
       }
@@ -143,6 +152,23 @@ export class ClaudeBrain implements Brain {
       const result = await new Promise<string>(respond => {
         if (!this.sink) return respond('现在改不了这张便签。');
         this.sink({ type: 'note_edit', ops, respond });
+      });
+      return { content: [{ type: 'text', text: result }] };
+    });
+
+    const keepNote = tool('keep_note', KEEP_NOTE_DESCRIPTION, {}, async () => {
+      const result = await new Promise<string>(respond => {
+        if (!this.sink) return respond('现在收不了这张便签。');
+        this.sink({ type: 'note_keep', respond });
+      });
+      return { content: [{ type: 'text', text: result }] };
+    });
+
+    const updatePreferences = tool('update_preferences', PREFERENCES_DESCRIPTION, preferencesShape, async ({ language, initiative }) => {
+      const patch: PreferencesPatch = { ...(language ? { language } : {}), ...(initiative ? { initiative } : {}) };
+      const result = await new Promise<string>(respond => {
+        if (!this.sink) return respond('现在改不了。');
+        this.sink({ type: 'preferences', patch, respond });
       });
       return { content: [{ type: 'text', text: result }] };
     });
@@ -159,8 +185,8 @@ export class ClaudeBrain implements Brain {
         cwd: workspace,
         settingSources: [],
         tools: [],
-        mcpServers: { [TOOL_SERVER]: createSdkMcpServer({ name: TOOL_SERVER, tools: [sendVoice, writeLetter, editLetter, writeNote, editNote] }) },
-        allowedTools: [VOICE_TOOL, LETTER_TOOL, EDIT_TOOL, NOTE_TOOL, EDIT_NOTE_TOOL],
+        mcpServers: { [TOOL_SERVER]: createSdkMcpServer({ name: TOOL_SERVER, tools: [sendVoice, writeLetter, editLetter, writeNote, editNote, keepNote, updatePreferences] }) },
+        allowedTools: [VOICE_TOOL, LETTER_TOOL, EDIT_TOOL, NOTE_TOOL, EDIT_NOTE_TOOL, KEEP_NOTE_TOOL, PREFERENCES_TOOL],
         permissionMode: 'dontAsk',
         includePartialMessages: true,
         // Chat needs a fast first word, not deep reasoning; thinking added seconds per reply.
@@ -250,8 +276,8 @@ export class ClaudeBrain implements Brain {
     if (!call.noteId) return;
     const now = Date.now();
     if (!force && now - call.sentAt < LETTER_PROGRESS_MS) return;
-    const draft = (parsePartialJson(call.json) ?? {}) as { title?: unknown; blocks?: unknown };
-    const progress = { title: toTitle(draft.title), blocks: toBlocks(draft.blocks) };
+    const draft = (parsePartialJson(call.json) ?? {}) as { title?: unknown; blocks?: unknown; fresh?: unknown };
+    const progress = { title: toTitle(draft.title), blocks: toBlocks(draft.blocks), fresh: draft.fresh === true };
     const key = JSON.stringify(progress);
     if (key === call.sent) return;
     call.sent = key;

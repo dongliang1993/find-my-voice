@@ -30,8 +30,10 @@ type State = {
   edits: LetterEdit[];
   /** The one note, on the table. */
   note: Note | null;
-  /** The notes taken off the table and kept: what the dock holds. */
-  filedNotes: Note[];
+  /** Bumped when a setting changed outside the settings page: she was asked to, out loud. */
+  settingsStamp: number;
+  /** The note last kept, and the letter it became: the card plays its way into the inbox. */
+  filed: { seq: number; noteId: string; letterId: string } | null;
   /** Note edits in order, for the card to play through. */
   noteEdits: NoteEdit[];
 };
@@ -62,7 +64,7 @@ function reducer(state: State, action: Action): State {
   if (action.type === 'dismiss') return { ...state, notices: state.notices.filter(n => n.id !== action.id) };
   const event = action.event;
   switch (event.type) {
-    case 'hello': return { ...state, messages: event.messages, status: event.status, letters: event.letters ?? [], note: event.note ?? null, filedNotes: event.filedNotes ?? [] };
+    case 'hello': return { ...state, messages: event.messages, status: event.status, letters: event.letters ?? [], note: event.note ?? null };
     case 'message': return { ...state, messages: upsert(state.messages, event.message) };
     case 'text_delta': return {
       ...state,
@@ -102,8 +104,11 @@ function reducer(state: State, action: Action): State {
       return { ...state, note: event.note, noteEdits };
     }
     case 'note_removed': return { ...state, note: null, noteEdits: [] };
-    case 'note_filed': return { ...state, note: null, noteEdits: [], filedNotes: event.filedNotes };
-    case 'note_unfiled': return { ...state, filedNotes: event.filedNotes };
+    case 'note_filed': return {
+      ...state, note: null, noteEdits: [], letters: putLetter(state.letters, event.letter),
+      filed: { seq: (state.filed?.seq ?? 0) + 1, noteId: event.noteId, letterId: event.letter.id },
+    };
+    case 'settings': return { ...state, settingsStamp: state.settingsStamp + 1 };
     default: return state;
   }
 }
@@ -114,7 +119,7 @@ const RETRY_MS = [500, 1000, 2000, 4000, 8000];
 export function useChat() {
   const [state, dispatch] = useReducer(reducer, {
     messages: [], status: 'idle', connection: 'connecting', notices: [], reached: null, lines: {}, letters: [], edits: [],
-    note: null, noteEdits: [], filedNotes: [],
+    note: null, noteEdits: [], settingsStamp: 0, filed: null,
   });
   const socket = useRef<WebSocket | null>(null);
   const pending = useRef<ClientEvent[]>([]);

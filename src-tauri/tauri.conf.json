@@ -12,11 +12,13 @@
   "app": {
     "windows": [
       {
-        "title": "Find My Voice",
+        "title": "",
         "width": 480,
         "height": 800,
         "minWidth": 360,
-        "minHeight": 480
+        "minHeight": 480,
+        "titleBarStyle": "Overlay",
+        "hiddenTitle": true
       }
     ],
     "security": {
@@ -25,9 +27,18 @@
   },
   "bundle": {
     "active": true,
-    "targets": ["app"],
+    "targets": [
+      "app"
+    ],
     "macOS": {
       "minimumSystemVersion": "13.0"
-    }
+    },
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ]
   }
 }

@@ -10,6 +10,8 @@ import { usePen, type PenMode } from '@/features/letter/usePen';
 import { cn } from '@/lib/utils';
 import type { LetterEdit } from '@/hooks/useChat';
 import { api } from '@/lib/api';
+import { dayOf, useSay, useUi } from '@/lib/locale';
+import { useScrollFade } from '@/hooks/useScrollFade';
 
 type Props = {
   letter: Letter;
@@ -29,7 +31,6 @@ type Props = {
 };
 
 const UNFOLD = { duration: 0.7, ease: [0.65, 0, 0.35, 1] as const };
-const date = (iso: string) => new Date(iso).toLocaleDateString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric' });
 
 /** What a field shows: the chunks written so far, or null for all of it. */
 type Source = (segment: Segment) => { at: number; text: string }[] | null;
@@ -55,6 +56,7 @@ function Ink({ segment, source, cursor }: { segment: Segment; source: Source; cu
  * it in the user's own browser.
  */
 function Block({ block, source, cursor, letterId }: { block: LetterBlock; source: Source; cursor: Cursor; letterId: string }) {
+  const say = useSay();
   const [first, second] = blockSegments(block);
   if (!first) return null;
   if (block.type === 'heading') {
@@ -77,8 +79,8 @@ function Block({ block, source, cursor, letterId }: { block: LetterBlock; source
   return (
     <p className="my-2 font-heading text-[15px] leading-[1.8]">
       {block.link ? (
-        <button type="button" onClick={open} title={`去找「${block.name}」`}
-          className="cursor-pointer text-left decoration-(--paper-quiet)/60 decoration-[0.5px] underline underline-offset-4 focus-visible:outline-none">
+        <button type="button" onClick={open} title={say(`去找「${block.name}」`, `Look for “${block.name}”`)}
+          className="cursor-pointer text-left decoration-transparent decoration-[0.5px] underline underline-offset-4 transition-[text-decoration-color] duration-200 hover:decoration-(--paper-quiet)/60 focus-visible:outline-none focus-visible:decoration-(--paper-quiet)/60">
           <Ink segment={first} source={source} cursor={cursor} />
         </button>
       ) : <Ink segment={first} source={source} cursor={cursor} />}
@@ -107,11 +109,15 @@ function Rewrite({ block, letterId, still, onWritten }: { block: LetterBlock; le
  * one, and holding Space to talk to her has to keep working with the letter open.
  */
 export function Paper({ letter, mode, edits, caption, herLine, thinking, listening, onClose, embedded = false }: Props) {
+  const ui = useUi();
+  const say = useSay();
   const still = useReducedMotion() ?? false;
   const segments = useMemo(() => letterSegments(letter), [letter]);
   const { pen, skip } = usePen(segments, mode, still);
   const writing = letter.status === 'writing' || !caughtUp(pen, segments);
   const scroller = useRef<HTMLDivElement>(null);
+  const fade = useScrollFade<HTMLDivElement>();
+  const scrollerRef = useCallback((el: HTMLDivElement | null) => { scroller.current = el; return fade(el); }, [fade]);
   const lines = useRef(new Map<string, HTMLElement>());
   /** Follows the pen down while she writes, until the user scrolls up to reread. */
   const follow = useRef(true);
@@ -154,28 +160,31 @@ export function Paper({ letter, mode, edits, caption, herLine, thinking, listeni
   const sheet = (
     <motion.article layoutId={embedded ? undefined : `letter-${letter.id}`} transition={{ layout: still ? { duration: 0 } : UNFOLD }}
       initial={{ opacity: 0, scale: embedded ? 1 : 0.97 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }}
-      aria-label={`信：${letter.title}`} onClick={writing ? skip : undefined}
+      aria-label={say(`信：${letter.title}`, `Letter: ${letter.title}`)} onClick={writing ? skip : undefined}
       className={embedded
         ? 'relative h-full overflow-hidden bg-(--paper) text-(--paper-ink)'
         : 'relative w-[min(640px,86vw)] overflow-hidden rounded-[3px] bg-(--paper) text-(--paper-ink) shadow-[0_30px_80px_-20px_rgb(20_6_2/0.55)]'}>
-      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1, transition: { delay: still ? 0 : 0.45, duration: 0.3 } }}
+      {/* Full height when embedded, or the scroller inside has no height to scroll in and the paper simply cuts off. */}
+      <motion.div className={embedded ? 'h-full' : undefined} initial={{ opacity: 0 }} animate={{ opacity: 1, transition: { delay: still ? 0 : 0.45, duration: 0.3 } }}
         exit={{ opacity: 0, transition: { duration: 0.15 } }}>
         <div className="grain pointer-events-none absolute inset-0 [--grain-opacity:0.08]" aria-hidden="true" />
         {!embedded && (
-          <button type="button" onClick={event => { event.stopPropagation(); onClose(); }} aria-label="收起信"
+          <button type="button" onClick={event => { event.stopPropagation(); onClose(); }} aria-label={say('收起信', 'Put the letter away')}
             className="absolute top-3 right-3 z-10 grid size-8 place-items-center rounded-full text-(--paper-quiet)/45 transition-colors hover:text-(--paper-quiet) focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-(--paper-quiet)/50">
             <X className="size-4" />
           </button>
         )}
-        <div ref={scroller} onScroll={() => {
+        <div ref={scrollerRef} onScroll={() => {
           const box = scroller.current;
           if (box) follow.current = box.scrollHeight - box.scrollTop - box.clientHeight < 32;
         }} className={embedded
-          ? 'relative h-full overflow-y-auto overscroll-contain px-8 pt-10 pb-12 sm:px-14 sm:pt-12 sm:pb-14'
-          : 'relative max-h-[calc(100dvh-12rem)] overflow-y-auto overscroll-contain px-8 pt-10 pb-12 sm:px-14 sm:pt-12 sm:pb-14'}>
+          ? 'scroll-fade relative h-full overflow-y-auto overscroll-contain px-8 pt-4 pb-10 sm:px-14 sm:pt-6'
+          : 'scroll-fade relative max-h-[calc(100dvh-12rem)] overflow-y-auto overscroll-contain px-8 pt-10 pb-12 sm:px-14 sm:pt-12 sm:pb-14'}>
             {/* She is still here, and can still hear: a small wave at the top of the page. */}
-            <Spiral thinking={thinking} listening={listening} stage="awake" rest={0.12} weight={1 / 40}
-              className="mx-auto -mt-4 mb-6 h-5 w-20 [--spiral:var(--paper-seal)]" />
+            {!embedded && (
+              <Spiral thinking={thinking} listening={listening} stage="awake" rest={0.12} weight={1 / 40}
+                className="mx-auto -mt-4 mb-6 h-5 w-20 [--spiral:var(--paper-seal)]" />
+            )}
             {letter.title && (
               <h2 className="mb-6 font-heading text-[26px] leading-snug">
                 <Ink segment={segments[0]!} source={rows ? whole : source} cursor={rows ? null : cursor} />
@@ -205,10 +214,10 @@ export function Paper({ letter, mode, edits, caption, herLine, thinking, listeni
             <motion.footer initial={false} animate={{ opacity: writing ? 0 : 1 }} transition={{ duration: still ? 0 : 0.8 }}
               className="mt-10 text-right">
               <p className="font-heading text-[18px] italic">{letter.signature}</p>
-              <p className="mt-1 text-[13px] text-(--paper-quiet)">{date(letter.createdAt)}</p>
+              <p className="mt-1 text-[13px] text-(--paper-quiet)">{dayOf(letter.createdAt, ui, true)}</p>
             </motion.footer>
             {letter.status === 'broken' && (
-              <p className="mt-6 text-center text-[13px] text-(--paper-quiet)">这封信写到一半断了。</p>
+              <p className="mt-6 text-center text-[13px] text-(--paper-quiet)">{say('这封信写到一半断了。', 'This letter broke off halfway.')}</p>
             )}
           </div>
         </motion.div>
@@ -222,7 +231,7 @@ export function Paper({ letter, mode, edits, caption, herLine, thinking, listeni
     <motion.div className="absolute inset-0 z-40 flex flex-col items-center justify-center px-4 py-6"
       initial={{ opacity: 1 }} exit={{ opacity: 1 }}>
       {/* The stage steps back: darker, a little out of focus. A click on it puts the letter away. */}
-      <motion.button type="button" aria-label="收起信" onClick={onClose} tabIndex={-1}
+      <motion.button type="button" aria-label={say('收起信', 'Put the letter away')} onClick={onClose} tabIndex={-1}
         className="absolute inset-0 cursor-default bg-[rgb(28_10_6/0.5)] backdrop-blur-[3px]"
         initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: still ? 0 : 0.6 }} />
       {sheet}

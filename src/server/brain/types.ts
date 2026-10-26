@@ -1,4 +1,7 @@
-import type { LetterBlock, Note } from '../../shared/protocol.js';
+import type { InitiativeSettings, LetterBlock, Note, ReplyLanguage } from '../../shared/protocol.js';
+
+/** The preferences she may change herself, because the user asked her to. */
+export type PreferencesPatch = { language?: ReplyLanguage; initiative?: InitiativeSettings['mode'] };
 
 /** What the companion does during one reply. The chat layer turns these into messages. */
 export type BrainEvent =
@@ -18,10 +21,17 @@ export type BrainEvent =
   | { type: 'letter_edit'; letterId: string; ops: unknown; respond: (result: string) => void }
   /** She has started a note: the card can come up before a word of it is in. */
   | { type: 'note_start'; noteId: string }
-  /** What the note says so far, growing the same way a letter does. */
-  | { type: 'note_progress'; noteId: string; title: string; blocks: LetterBlock[] }
+  /**
+   * What the note says so far, growing the same way a letter does. `fresh`: a
+   * new topic — what was on the table is wiped, not written under.
+   */
+  | { type: 'note_progress'; noteId: string; title: string; blocks: LetterBlock[]; fresh: boolean }
   /** The note as written. Empty blocks means it came to nothing and never happened. */
-  | { type: 'note_done'; noteId: string; title: string; blocks: LetterBlock[] }
+  | { type: 'note_done'; noteId: string; title: string; blocks: LetterBlock[]; fresh: boolean }
+  /** The user asked her to keep the note: it goes into the inbox, signed. */
+  | { type: 'note_keep'; respond: (result: string) => void }
+  /** The user asked, out loud, for a preference to change. Applied by the app; the answer is the tool's. */
+  | { type: 'preferences'; patch: PreferencesPatch; respond: (result: string) => void }
   /** She wants to change the note; the chat layer applies and answers, as with a letter. No id: there is only ever one. */
   | { type: 'note_edit'; ops: unknown; respond: (result: string) => void }
   | { type: 'error'; code: string; message: string }

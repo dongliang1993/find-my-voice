@@ -8,4 +8,7 @@ const markHidden = () => { document.documentElement.toggleAttribute('data-hidden
 document.addEventListener('visibilitychange', markHidden);
 markHidden();
 
+// In the desktop shell the title bar is transparent and the page runs under it (see [data-shell] in index.css).
+if ('__TAURI_INTERNALS__' in window) document.documentElement.dataset.shell = 'tauri';
+
 createRoot(document.getElementById('root')!).render(<StrictMode><App /></StrictMode>);

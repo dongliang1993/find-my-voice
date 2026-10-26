@@ -312,3 +312,31 @@ test('markup she streams is stored and spoken without it', async () => {
   assert.equal(text?.text, '下雨天推荐《花样年华》');
   assert.equal(voice?.text, '要不要听点爵士？');
 });
+
+test('a typed line is voiced once on request, and asking again returns the same voice', async () => {
+  let spoken = 0;
+  const speak: FakeSpeak = async (...args) => { spoken++; return okVoice(...args); };
+  const { store, events, service } = setup(new ScriptedBrain([{ type: 'text_delta', text: 'Americano is fine.' }]), speak);
+  await service.send(randomUUID(), '能喝美式吗');
+  const reply = store.recent().at(-1)!;
+  assert.equal(reply.audio, null);
+
+  const audioId = service.voiceMessage(reply.id);
+  assert.ok(audioId);
+  await settle();
+  assert.equal(store.get(reply.id)?.audio?.state, 'ready');
+  assert.equal(store.get(reply.id)?.kind, 'text');
+  assert.ok(events.some(e => e.type === 'audio_chunk' && e.audioId === audioId));
+
+  assert.equal(service.voiceMessage(reply.id), audioId);
+  assert.equal(spoken, 1);
+});
+
+test('nothing is voiced without a voice to say it, or for a line that is not hers', async () => {
+  const store = new ChatStore(mkdtempSync(join(tmpdir(), 'fmv-chat-')));
+  const service = new ChatService({ store, createBrain: () => new ScriptedBrain([]), voice: { speak: okVoice }, canSpeak: () => false });
+  const hers = store.append({ role: 'assistant', kind: 'text', text: 'Hi.' });
+  const theirs = store.append({ role: 'user', kind: 'text', text: '嗨' });
+  assert.equal(service.voiceMessage(hers.id), null);
+  assert.equal(service.voiceMessage(theirs.id), null);
+});

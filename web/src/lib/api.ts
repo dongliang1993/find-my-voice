@@ -39,6 +39,8 @@ export const api = {
   audioReady: (id: string) => fetch(`/api/audio/${id}`, { method: 'HEAD' }).then(response => response.ok),
   /** The archive of a spoken line. */
   audioUrl: (id: string) => `/api/audio/${id}`,
+  /** Has her say a line she only typed; its voice arrives on the socket. */
+  voiceMessage: (id: string) => request<{ audioId: string }>(`/api/messages/${id}/voice`, { method: 'POST' }),
   /** Marks a letter read; the server tells every page. */
   openLetter: (id: string) => request<Letter>(`/api/letters/${id}/open`, { method: 'POST' }),
   deleteLetter: (id: string) => fetch(`/api/letters/${id}`, { method: 'DELETE' }).then(r => { if (!r.ok) throw new Error('删不掉这封信'); }),
@@ -46,10 +48,13 @@ export const api = {
   rewriteLetter: (id: string) => fetch(`/api/letters/${id}/rewrite`, { method: 'POST' }).then(r => r.ok),
   /** The note on the table, closed: it is gone, nothing kept. */
   closeNote: () => fetch('/api/note', { method: 'DELETE' }).then(r => { if (!r.ok) throw new Error('收不走这张便签'); }),
-  /** The note taken off the table and kept: what the dock now holds. */
-  fileNote: () => request<Note[]>('/api/note/file', { method: 'POST' }),
-  /** One of the dock's notes, back on the table. */
-  unfileNote: (noteId: string) => request<Note>('/api/note/unfile', { method: 'POST', body: JSON.stringify({ noteId }) }),
+  /** The note kept: signed, it is a letter in the inbox. */
+  fileNote: () => request<Letter>('/api/note/file', { method: 'POST' }),
+  /** IDENTITY.md or MEMORY.md, opened in the system's editor. */
+  identity: () => request<{ content: string; sha256: string | null }>('/api/profile/identity'),
+  saveIdentity: (content: string, baseSha256: string | null) =>
+    request<{ content: string; sha256: string | null }>('/api/profile/identity', { method: 'PUT', body: JSON.stringify({ content, baseSha256 }) }),
+  openProfile: (name: 'identity' | 'memory') => request<void>(`/api/profile/${name}/open`, { method: 'POST' }),
   /** The user's own hand on one block of the note: its words, or a tick in its check box. */
   patchNoteBlock: (blockId: string, change: { text: string } | { done: boolean }) =>
     request<Note>(`/api/note/blocks/${blockId}`, { method: 'PATCH', body: JSON.stringify(change) }),

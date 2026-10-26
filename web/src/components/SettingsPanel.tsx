@@ -1,208 +1,282 @@
-import { useEffect, useState, type SubmitEvent } from 'react';
-import { Loader2, X } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { AnimatePresence, motion } from 'motion/react';
 import { toast } from 'sonner';
-import type { AppStatus, BrainSource, PublicSettings, ReplyLanguage } from '@shared/protocol';
+import type { AppStatus, BrainSource, PublicSettings, ReplyLanguage, SettingsUpdate } from '@shared/protocol';
 import { api } from '@/lib/api';
-import { Button } from '@/components/ui/button';
-import { Drawer, DrawerContent, DrawerDescription, DrawerHeader, DrawerTitle } from '@/components/ui/drawer';
 import { Input } from '@/components/ui/input';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Textarea } from '@/components/ui/textarea';
 import { Field } from '@/components/settings/Field';
+import { choice } from '@/components/settings/choice';
+import { usePending } from '@/components/settings/usePending';
 import { ReplyLanguagePicker } from '@/components/settings/ReplyLanguagePicker';
-import { draftFrom, patchFrom, VoiceSettings, type VoiceDraft } from '@/components/settings/VoiceSettings';
-import { initiativeDraftFrom, initiativePatch, InitiativeSettingsSection, type InitiativeDraft } from '@/components/settings/InitiativeSettings';
-import { useMediaQuery } from '@/hooks/useMediaQuery';
+import { draftFrom, patchFrom, voiceUsable, VoiceSettings, type VoiceDraft, type When } from '@/components/settings/VoiceSettings';
+import { initiativeDraftFrom, InitiativeSettingsSection, type InitiativeDraft } from '@/components/settings/InitiativeSettings';
+import { useGlobal } from '@/store/global';
+import { AppSheet, type Frame, type Presence } from '@/features/dock/AppSheet';
+import { PANEL } from '@/features/dock/appSwitch';
+import { useSay, useUi, useWords, type Said } from '@/lib/locale';
 import { cn } from '@/lib/utils';
+import { useScrollFade } from '@/hooks/useScrollFade';
 
-type Preset = { id: string; label: string; baseUrl: string; model: string; hint: string; keyUrl: string };
+type Preset = { id: string; label: Said; baseUrl: string; model: string; hint: Said; keyUrl: string };
+const same = (text: string): Said => ({ zh: text, en: text });
 // Anthropic-compatible endpoints. Users pick one and paste a key; nothing else to look up.
 const PRESETS: Preset[] = [
-  { id: 'anthropic', label: 'Anthropic', baseUrl: '', model: '', hint: '官方 API Key，以 sk-ant- 开头', keyUrl: 'https://console.anthropic.com/settings/keys' },
-  { id: 'deepseek', label: 'DeepSeek', baseUrl: 'https://api.deepseek.com/anthropic', model: 'deepseek-chat', hint: 'DeepSeek 开放平台的 API Key', keyUrl: 'https://platform.deepseek.com/api_keys' },
-  { id: 'kimi', label: 'Kimi', baseUrl: 'https://api.moonshot.cn/anthropic', model: 'kimi-k2-turbo-preview', hint: 'Moonshot 开放平台的 API Key', keyUrl: 'https://platform.moonshot.cn/console/api-keys' },
-  { id: 'glm', label: '智谱 GLM', baseUrl: 'https://open.bigmodel.cn/api/anthropic', model: 'glm-4.6', hint: '智谱开放平台的 API Key', keyUrl: 'https://open.bigmodel.cn/usercenter/apikeys' },
-  { id: 'custom', label: '自定义', baseUrl: '', model: '', hint: '任意 Anthropic 兼容网关', keyUrl: '' },
+  { id: 'anthropic', label: same('Anthropic'), baseUrl: '', model: '', hint: { zh: '以 sk-ant- 开头', en: 'Starts with sk-ant-' }, keyUrl: 'https://console.anthropic.com/settings/keys' },
+  { id: 'deepseek', label: same('DeepSeek'), baseUrl: 'https://api.deepseek.com/anthropic', model: 'deepseek-chat', hint: same('DeepSeek API Key'), keyUrl: 'https://platform.deepseek.com/api_keys' },
+  { id: 'kimi', label: same('Kimi'), baseUrl: 'https://api.moonshot.cn/anthropic', model: 'kimi-k2-turbo-preview', hint: same('Moonshot API Key'), keyUrl: 'https://platform.moonshot.cn/console/api-keys' },
+  { id: 'glm', label: { zh: '智谱 GLM', en: 'Zhipu GLM' }, baseUrl: 'https://open.bigmodel.cn/api/anthropic', model: 'glm-4.6', hint: { zh: '智谱 API Key', en: 'Zhipu API Key' }, keyUrl: 'https://open.bigmodel.cn/usercenter/apikeys' },
+  { id: 'custom', label: { zh: '自定义', en: 'Custom' }, baseUrl: '', model: '', hint: { zh: '任意 Anthropic 兼容网关', en: 'Any Anthropic-compatible gateway' }, keyUrl: '' },
 ];
 
-const SOURCE_LABEL: Record<BrainSource, string> = {
-  app: '使用在这里填写的 Key',
-  'claude-code': '已沿用你的 Claude Code 配置',
-  environment: '已沿用环境变量里的 Key',
-  none: '还没有找到可用的模型',
+/** The saved base URL says which preset it was; anything unknown is a custom gateway. */
+const presetFor = (baseUrl: string) =>
+  PRESETS.find(p => p.id !== 'custom' && p.baseUrl === baseUrl) ?? PRESETS.at(-1)!;
+
+const SOURCE_LABEL: Record<BrainSource, Said> = {
+  app: { zh: '使用在这里填写的 Key', en: 'Using the key entered here' },
+  'claude-code': { zh: '沿用你的 Claude Code 配置', en: 'Using your Claude Code setup' },
+  environment: { zh: '沿用环境变量里的 Key', en: 'Using the key from your environment' },
+  none: { zh: '还没有可用的模型', en: 'No model available yet' },
 };
 
-type Tab = 'brain' | 'voice' | 'her';
-type Props = { status: AppStatus; onSaved: () => void; onClose: () => void };
+/** Typing is saved once it pauses this long. */
+const PAUSE_MS = 600;
+const SAVED_MS = 2000;
+
+type Page = 'brain' | 'voice' | 'her';
+type Brain = { preset: Preset; baseUrl: string; apiKey: string; model: string };
+type Identity = { content: string; sha256: string | null };
+
+type Props = { status: AppStatus; stamp: number; frame: Frame | null; presence: Presence; onClose: () => void };
 
 /**
- * The settings app, on the stage: on desktop it is a window centered in
- * the room, and on a phone it stays a bottom sheet. Either way it moves
- * as one record: up from behind, or down and away.
+ * Settings, on the same paper as her letters: a sheet slid out of the
+ * corner the switcher lives in, a page per subject down its left edge.
+ * There is no save button — every change keeps itself, and a quiet
+ * 「已保存」 beside the close button says so.
  */
-export function SettingsPanel({ status, onSaved, onClose }: Props) {
-  const desktop = useMediaQuery('(min-width: 640px)');
-  const title = '设置';
-  const description = '所有凭证只保存在你本机的 ~/.find-my-voice。';
-  const body = <SettingsForm status={status} onSaved={onSaved} pane={desktop ? 'dialog' : 'drawer'} />;
-
-  if (!desktop) {
-    return (
-      <Drawer open onOpenChange={() => {}}>
-        <DrawerContent className="flex max-h-[80dvh] flex-col bg-popover data-[vaul-drawer-direction=bottom]:max-h-[80dvh]">
-          <DrawerHeader className="flex-none text-left">
-            <DrawerTitle className="text-xl font-medium tracking-wide text-foreground">{title}</DrawerTitle>
-            <DrawerDescription>{description}</DrawerDescription>
-          </DrawerHeader>
-          {body}
-        </DrawerContent>
-      </Drawer>
-    );
-  }
-  // Desktop: a window of the room, not a dialog over it — it rises from
-  // behind the dock and folds back down the same way, the record change
-  // doing the moving. It closes by losing the stage; the close button
-  // and a lost click outside are the same door.
-  return (
-    <div role="dialog" aria-label={title}
-      className="absolute left-1/2 top-1/2 z-30 flex max-h-[min(70dvh,640px)] w-[min(94dvw,560px)] -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-[6px] bg-popover text-popover-foreground shadow-(--panel-shadow) ring-1 ring-hairline">
-      <div className="flex-none p-4 pb-0">
-        <div className="flex items-start justify-between">
-          <h2 className="text-xl font-medium tracking-wide text-foreground">{title}</h2>
-          <button type="button" onClick={onClose} aria-label="关闭"
-            className="-mr-1 -mt-1 text-muted-foreground transition-colors hover:text-foreground">
-            <X className="size-5" />
-          </button>
-        </div>
-        <p className="text-sm text-muted-foreground">{description}</p>
-      </div>
-      {body}
-    </div>
-  );
-}
-
-function SettingsForm({ status, onSaved, pane }: { status: AppStatus; onSaved: () => void; pane: 'dialog' | 'drawer' }) {
-  const [tab, setTab] = useState<Tab>(status.brain.ready ? (status.voice.ready ? 'her' : 'voice') : 'brain');
-  const [preset, setPreset] = useState<Preset>(PRESETS[0]!);
-  const [brain, setBrain] = useState({ baseUrl: '', apiKey: '', model: '' });
+export function SettingsPanel({ status, stamp, frame, presence, onClose }: Props) {
+  const word = useWords();
+  const ui = useUi();
+  const say = useSay();
+  const refreshStatus = useGlobal(store => store.refreshStatus);
+  const [page, setPage] = useState<Page>(status.brain.ready ? (status.voice.ready ? 'her' : 'voice') : 'brain');
   const [settings, setSettings] = useState<PublicSettings | null>(null);
+  const [brain, setBrain] = useState<Brain>({ preset: PRESETS[0]!, baseUrl: '', apiKey: '', model: '' });
   const [voice, setVoice] = useState<VoiceDraft>(() => draftFrom(null));
   const [name, setName] = useState(status.companionName);
-  const [language, setLanguage] = useState<ReplyLanguage>(settings?.companion.language ?? 'auto');
+  const [language, setLanguage] = useState<ReplyLanguage>('auto');
   const [initiative, setInitiative] = useState<InitiativeDraft>(() => initiativeDraftFrom(undefined));
-  const [saving, setSaving] = useState(false);
+  const [identity, setIdentity] = useState<Identity | null>(null);
+  /** The sha the next identity save is made against; a ref, so back-to-back saves chain. */
+  const identityBase = useRef<string | null>(null);
+  const [savedAt, setSavedAt] = useState(0);
+  const loaded = useRef(false);
+  const { schedule, flush } = usePending();
+  const fade = useScrollFade<HTMLDivElement>();
 
+  // Read again whenever the settings change elsewhere — she may have changed one because she was asked to.
   useEffect(() => {
     api.settings()
       .then(s => {
-        setSettings(s); setVoice(draftFrom(s)); setLanguage(s.companion.language);
+        setSettings(s);
+        setName(s.companion.name);
+        setLanguage(s.companion.language);
         setInitiative(initiativeDraftFrom(s.initiative));
+        // She only ever changes language and initiative; the pages with keys half-typed are left alone.
+        if (loaded.current) return;
+        loaded.current = true;
+        setVoice(draftFrom(s));
+        setBrain({ preset: presetFor(s.brain.baseUrl), baseUrl: s.brain.baseUrl, apiKey: '', model: s.brain.model });
       })
-      .catch(() => toast.error('读取设置失败'));
+      .catch(() => toast.error(say('读取设置失败', 'Could not read settings')));
+  }, [stamp]);
+
+  useEffect(() => {
+    api.identity()
+      .then(doc => { identityBase.current = doc.sha256; setIdentity(doc); })
+      .catch(() => toast.error(say('读取性格失败', 'Could not read her character')));
   }, []);
 
-  const pickPreset = (next: Preset) => {
-    setPreset(next);
-    setBrain(b => ({ ...b, baseUrl: next.baseUrl, model: next.model }));
-  };
+  useEffect(() => {
+    if (!savedAt) return;
+    const timer = setTimeout(() => setSavedAt(0), SAVED_MS);
+    return () => clearTimeout(timer);
+  }, [savedAt]);
 
-  const save = async (event: SubmitEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    setSaving(true);
+  const saved = () => { setSavedAt(Date.now()); void refreshStatus(); };
+
+  const save = async (patch: SettingsUpdate) => {
     try {
-      const next = tab === 'brain' ? await api.saveSettings({ brain })
-        : tab === 'voice' ? await api.saveSettings({ voice: patchFrom(voice) })
-        : await api.saveSettings({ companion: { name, language }, initiative: initiativePatch(initiative) });
-      // Keep the panel truthful even if it stays open: saved keys become "saved", typed secrets clear.
+      const next = await api.saveSettings(patch);
       setSettings(next);
-      setVoice(draftFrom(next));
-      toast.success('已保存');
-      onSaved();
+      saved();
+      return next;
     } catch (error) {
       toast.error((error as Error).message);
-    } finally {
-      setSaving(false);
+      return null;
     }
   };
 
-  const tabs: [Tab, string, boolean][] = [['brain', '大脑', status.brain.ready], ['voice', '声音', status.voice.ready], ['her', 'Ta', true]];
-  const scrollPad = pane === 'drawer'
-    ? 'px-4 pb-[calc(1.25rem+env(safe-area-inset-bottom))]'
-    : 'p-4 pt-0';
+  // ---- 大脑 ----
+  const brainUsable = (b: Brain) => Boolean(b.apiKey.trim() || settings?.brain.hasApiKey);
+  const editBrain = (next: Brain, when: When) => {
+    setBrain(next);
+    // A preset without a key would point a working setup at a gateway it cannot use.
+    if (!brainUsable(next)) return;
+    schedule('brain', async () => {
+      const key = next.apiKey.trim();
+      const done = await save({ brain: { baseUrl: next.baseUrl.trim(), model: next.model.trim(), ...(key ? { apiKey: key } : {}) } });
+      if (done && key) setBrain(b => (b.apiKey === next.apiKey ? { ...b, apiKey: '' } : b));
+    }, when === 'now' ? 0 : when === 'pause' ? PAUSE_MS : undefined);
+  };
+
+  // ---- 声音 ----
+  const editVoice = (next: VoiceDraft, when: When) => {
+    setVoice(next);
+    // Showing a provider is not choosing it: it only becomes hers once it has a key.
+    if (!voiceUsable(next, settings)) return;
+    schedule('voice', async () => {
+      const typed = next[next.provider].apiKey;
+      const done = await save({ voice: patchFrom(next) });
+      if (done && typed) {
+        setVoice(v => (v[next.provider].apiKey === typed ? { ...v, [next.provider]: { ...v[next.provider], apiKey: '' } } : v));
+      }
+    }, when === 'now' ? 0 : when === 'pause' ? PAUSE_MS : undefined);
+  };
+
+  // ---- Ta ----
+  const editName = (value: string) => {
+    setName(value);
+    if (!value.trim()) return;
+    schedule('name', () => void save({ companion: { name: value.trim() } }), PAUSE_MS);
+  };
+  const editLanguage = (value: ReplyLanguage) => {
+    setLanguage(value);
+    void save({ companion: { language: value } });
+  };
+  const editInitiative = (value: InitiativeDraft) => {
+    setInitiative(value);
+    void save({ initiative: value });
+  };
+  const editIdentity = (content: string) => {
+    setIdentity(doc => (doc ? { ...doc, content } : doc));
+    if (!content.trim()) return;
+    schedule('identity', async () => {
+      try {
+        const doc = await api.saveIdentity(content, identityBase.current);
+        identityBase.current = doc.sha256;
+        saved();
+      } catch (error) {
+        // Most likely the file was edited elsewhere in the meantime: show that one rather than overwrite it.
+        toast.error((error as Error).message);
+        const doc = await api.identity().catch(() => null);
+        if (doc) { identityBase.current = doc.sha256; setIdentity(doc); }
+      }
+    }, PAUSE_MS);
+  };
+
+  const pages: [Page, string, boolean][] = [['brain', word('brain'), status.brain.ready], ['voice', word('voice'), status.voice.ready], ['her', name.trim() || status.companionName, true]];
 
   return (
-    <Tabs value={tab} onValueChange={value => setTab(value as Tab)} className="flex min-h-0 flex-1 flex-col gap-5">
-      <TabsList className="mx-4 w-[calc(100%-2rem)] flex-none">
-        {tabs.map(([id, label, ok]) => (
-          <TabsTrigger key={id} value={id} className="gap-1.5">
-            {label}
-            {!ok && <span className="size-1.5 rounded-full bg-destructive" aria-label="未配置" />}
-          </TabsTrigger>
-        ))}
-      </TabsList>
+    <AppSheet title={word('settings')} frame={frame} presence={presence} onClose={onClose} actions={
+      // Next to the close button, where the eye already goes once a change is made.
+      <AnimatePresence>
+        {savedAt > 0 && (
+          <motion.p key={savedAt} role="status" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            transition={PANEL} className="pointer-events-none mr-1 text-[13px] text-muted-foreground">
+            {word('saved')}
+          </motion.p>
+        )}
+      </AnimatePresence>
+    }>
 
-      <form id="settings-form" onSubmit={save} className={cn('grid min-h-0 flex-1 content-start gap-5 overflow-y-auto', scrollPad)}>
-        <TabsContent value="brain" className="grid gap-4">
-          <SourceLine ok={status.brain.ready}>{SOURCE_LABEL[status.brain.source]}</SourceLine>
-          <p className="text-sm text-muted-foreground">Ta 用 Claude Agent 驱动，需要一个 Anthropic 或兼容服务的 API Key。</p>
-          <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="服务商">
-            {PRESETS.map(p => (
-              <Button key={p.id} type="button" size="sm" role="radio" aria-checked={preset.id === p.id}
-                variant={preset.id === p.id ? 'secondary' : 'outline'}
-                className={cn('rounded-full', preset.id === p.id && 'border-primary/60 text-primary')}
-                onClick={() => pickPreset(p)}>
-                {p.label}
-              </Button>
-            ))}
-          </div>
-          {preset.id === 'custom' && (
-            <Field id="brain-url" label="Base URL">
-              <Input id="brain-url" value={brain.baseUrl} onChange={e => setBrain({ ...brain, baseUrl: e.target.value })} placeholder="https://…/anthropic" inputMode="url" />
-            </Field>
+      <div className="flex min-h-0 flex-1 flex-col sm:flex-row">
+        <nav aria-label={word('settings')} className="flex flex-none gap-1 px-5 pt-3 sm:w-36 sm:flex-col sm:px-4 sm:pt-5">
+          {pages.map(([id, label, ok]) => (
+            <button key={id} type="button" aria-current={page === id ? 'page' : undefined} onClick={() => setPage(id)}
+              className={cn(choice(page === id, 'row'), 'flex items-center justify-between gap-2')}>
+              {label}
+              {!ok && <span className="size-1.5 rounded-full bg-primary" aria-label={word('unset')} />}
+            </button>
+          ))}
+        </nav>
+
+        {/* Room under the last item: 40px on a desktop; on a phone, clear of the switcher too. */}
+        <div ref={fade} className="scroll-fade min-h-0 flex-1 overflow-y-auto px-6 pt-5 pb-28 text-[14px] sm:pb-10 sm:pl-4">
+          <p className="letter mb-5 text-[13px] text-muted-foreground italic">{word('tellHer')}</p>
+          {page === 'brain' && (
+            <div className="grid gap-5">
+              <p className={cn('flex items-center gap-2', status.brain.ready ? 'text-foreground' : 'text-primary')}>
+                <span className={cn('size-1.5 rounded-full', status.brain.ready ? 'bg-foreground/50' : 'bg-primary')} />
+                {SOURCE_LABEL[status.brain.source][ui]}
+              </p>
+              <div className="flex flex-wrap gap-2" role="radiogroup" aria-label={say('服务商', 'Provider')}>
+                {PRESETS.map(p => (
+                  <button key={p.id} type="button" role="radio" aria-checked={brain.preset.id === p.id}
+                    className={choice(brain.preset.id === p.id)}
+                    onClick={() => editBrain({ ...brain, preset: p, baseUrl: p.id === 'custom' ? brain.baseUrl : p.baseUrl, model: p.model }, p.id === 'custom' ? 'leave' : 'now')}>
+                    {p.label[ui]}
+                  </button>
+                ))}
+              </div>
+              {brain.preset.id === 'custom' && (
+                <Field id="brain-url" label="Base URL">
+                  <Input id="brain-url" value={brain.baseUrl} onChange={e => editBrain({ ...brain, baseUrl: e.target.value }, 'pause')}
+                    placeholder="https://…/anthropic" inputMode="url" />
+                </Field>
+              )}
+              <Field id="brain-key" label="API Key" link={brain.preset.keyUrl || undefined}>
+                <Input id="brain-key" type="password" autoComplete="off" value={brain.apiKey}
+                  onChange={e => editBrain({ ...brain, apiKey: e.target.value }, 'leave')}
+                  onBlur={() => flush('brain')} onKeyDown={e => { if (e.key === 'Enter') flush('brain'); }}
+                  placeholder={settings?.brain.hasApiKey ? word('saved') : brain.preset.hint[ui]} />
+              </Field>
+              <Field id="brain-model" label={say('模型', 'Model')}>
+                <Input id="brain-model" value={brain.model} onChange={e => editBrain({ ...brain, model: e.target.value }, 'pause')}
+                  placeholder={say('默认', 'Default')} />
+              </Field>
+              <p className="text-[13px] text-muted-foreground">{say('所有凭证只保存在你本机的 ~/.find-my-voice。', 'Every key stays on this machine, in ~/.find-my-voice.')}</p>
+            </div>
           )}
-          <Field id="brain-key" label="API Key" link={preset.keyUrl}>
-            <Input id="brain-key" type="password" value={brain.apiKey} onChange={e => setBrain({ ...brain, apiKey: e.target.value })}
-              placeholder={preset.hint} autoComplete="off" required={!status.brain.ready} />
-          </Field>
-          <Field id="brain-model" label="模型" optional>
-            <Input id="brain-model" value={brain.model} onChange={e => setBrain({ ...brain, model: e.target.value })} placeholder="留空使用默认模型" />
-          </Field>
-        </TabsContent>
 
-        <TabsContent value="voice" className="grid gap-4">
-          <SourceLine ok={status.voice.ready}>{status.voice.ready ? '声音已就绪' : '还不能发语音'}</SourceLine>
-          <VoiceSettings draft={voice} settings={settings} onChange={setVoice} />
-        </TabsContent>
+          {page === 'voice' && (
+            <VoiceSettings draft={voice} settings={settings} onChange={editVoice} onLeave={() => flush('voice')} />
+          )}
 
-        <TabsContent value="her" className="grid gap-4">
-          <p className="text-sm text-muted-foreground">
-            Ta 的性格写在 <code className="rounded bg-muted px-1 py-0.5 text-xs">~/.find-my-voice/IDENTITY.md</code>，
-            Ta 对你的了解写在 <code className="rounded bg-muted px-1 py-0.5 text-xs">MEMORY.md</code>。可以直接编辑，下一条消息生效。
-          </p>
-          <Field id="her-name" label="Ta 的名字">
-            <Input id="her-name" value={name} onChange={e => setName(e.target.value)} maxLength={40} required />
-          </Field>
-          <ReplyLanguagePicker value={language} onChange={setLanguage} />
-          <InitiativeSettingsSection draft={initiative} name={name} onChange={setInitiative} />
-        </TabsContent>
-      </form>
-
-      {/* Its own band, inset from the scrolling pane so it never touches the edges. */}
-      <Button type="submit" size="lg" disabled={saving}
-        className={cn('mx-4 mb-4 flex-none rounded-xl text-base',
-          pane === 'drawer' && 'mb-[calc(1.25rem+env(safe-area-inset-bottom))]')}
-        form="settings-form">
-        {saving && <Loader2 className="animate-spin" />}
-        {saving ? '保存中…' : '保存'}
-      </Button>
-    </Tabs>
-  );
-}
-
-function SourceLine({ ok, children }: { ok: boolean; children: React.ReactNode }) {
-  return (
-    <p className={cn('flex items-center gap-2 text-sm', ok ? 'text-primary' : 'text-destructive')}>
-      <span className="size-1.5 rounded-full bg-current" />
-      {children}
-    </p>
+          {page === 'her' && (
+            <div className="grid gap-6">
+              <Field id="her-identity" label={say('性格', 'Character')}>
+                <Textarea id="her-identity" value={identity?.content ?? ''} disabled={!identity}
+                  onChange={e => editIdentity(e.target.value)} onBlur={() => flush('identity')}
+                  className="max-h-[40dvh] min-h-32 resize-none text-[14px] leading-relaxed" />
+              </Field>
+              <Field id="her-name" label={say('名字', 'Name')}>
+                <Input id="her-name" value={name} maxLength={40} onChange={e => editName(e.target.value)} onBlur={() => flush('name')} />
+              </Field>
+              <ReplyLanguagePicker value={language} onChange={editLanguage} />
+              <InitiativeSettingsSection draft={initiative} onChange={editInitiative} />
+              <details className="group">
+                <summary className="cursor-pointer list-none text-[13px] text-muted-foreground hover:text-foreground">
+                  {say('高级', 'Advanced')}
+                </summary>
+                <div className="mt-3 grid gap-2 text-[13px]">
+                  {([['identity', 'IDENTITY.md'], ['memory', 'MEMORY.md']] as const).map(([doc, file]) => (
+                    <p key={doc} className="flex items-baseline gap-3">
+                      <span className="text-muted-foreground">{file}</span>
+                      <button type="button" className="text-primary hover:underline"
+                        onClick={() => api.openProfile(doc).catch(error => toast.error((error as Error).message))}>
+                        {say('在编辑器中打开', 'Open in editor')}
+                      </button>
+                    </p>
+                  ))}
+                </div>
+              </details>
+            </div>
+          )}
+        </div>
+      </div>
+    </AppSheet>
   );
 }

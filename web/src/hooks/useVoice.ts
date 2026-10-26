@@ -7,6 +7,11 @@ export function usePlaying() {
   return useSyncExternalStore(cb => audio.subscribe(cb), () => audio.playing);
 }
 
+/** Re-renders when she is held mid-sentence or let go. */
+export function usePaused() {
+  return useSyncExternalStore(cb => audio.subscribe(cb), () => audio.paused);
+}
+
 /** Her smoothed loudness (0..1), for canvas drawing that cannot read CSS cheaply. */
 export const voiceLevel = { current: 0 };
 

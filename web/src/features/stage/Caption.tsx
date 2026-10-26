@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { STAGE_OPEN_LINE } from '@/features/onboarding/layout';
 import { cn } from '@/lib/utils';
 import { audio } from '@/lib/audio';
-import { beats as toBeats, width, type TimedLine } from '@/features/stage/subtitles';
+import { beats as toBeats, MAX_EM, width, type TimedLine } from '@/features/stage/subtitles';
 
 /** Fast enough for the eye to follow, cheap enough to leave running. */
 const TICK_MS = 100;
@@ -79,22 +79,24 @@ export function Caption({ messageId, text, audioId, timed, expanded, preview, on
       onPointerEnter={e => { if (more && e.pointerType === 'mouse') onPreview(true); }}
       onPointerLeave={e => { if (e.pointerType === 'mouse') onPreview(false); }}
       className={cn('mx-auto block max-w-[22em] font-heading leading-[1.6] transition-opacity duration-[600ms]',
-        more ? 'cursor-pointer' : 'cursor-default',
-        'text-[19px] sm:text-[21px]')}
+        more ? 'cursor-pointer' : 'cursor-default')}
       style={{ opacity }}>
       {/* The beats keep their place while the reply is open, so nothing on the stage moves under the pointer. */}
       <span className={cn('block transition-opacity duration-300', open && 'opacity-0')} aria-hidden={open}>
         <span aria-hidden="true"
-          className="block h-[1.6em] overflow-hidden text-[0.8em] whitespace-nowrap text-white/40">
+          className="block h-[1.6em] truncate text-[0.8em] text-white/40">
           {previous}
         </span>
-        {/* No `block` here: it would win over the `-webkit-box` line-clamp needs.
-            A beat past a line steps down instead of wrapping; 80% of her size is the
-            floor. Only the beat shrinks — the box around it is fixed by the stage. */}
-        <span key={index} className={cn('subtitles-in line-clamp-3', width(current) > 20 && 'text-[16px] sm:text-[17px]')}>{current}</span>
+        {/* Balanced, so a sentence that wraps never leaves one word alone on its
+            second line. Capped by height rather than line-clamp, whose -webkit-box
+            would undo the balancing. A long beat steps down to fit three lines in
+            the two-line box; only the beat shrinks — the box around it is fixed by
+            the stage. A beat is a whole sentence, so it shrinks rather than being cut. */}
+        <span key={index} className={cn('subtitles-in block overflow-hidden text-balance',
+          width(current) > MAX_EM ? 'max-h-[4.8em] text-[0.66em]' : 'max-h-[3.2em]')}>{current}</span>
       </span>
       {open && (
-        <span className={cn(STAGE_OPEN_LINE, 'subtitles-in text-[19px] sm:text-[21px]')}>
+        <span className={cn(STAGE_OPEN_LINE, 'subtitles-in text-[clamp(19px,1.6vw,24px)]')}>
           <span className="flex min-h-full flex-col justify-end py-6">
             {/* As wide as the words, then centred: a short reply stays where its subtitle was,
                 a long one reads as a left-aligned paragraph. */}

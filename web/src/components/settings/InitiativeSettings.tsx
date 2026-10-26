@@ -1,9 +1,9 @@
 import { useState } from 'react';
-import { BellRing } from 'lucide-react';
-import type { InitiativeSettings, SettingsUpdate } from '@shared/protocol';
-import { Button } from '@/components/ui/button';
+import type { InitiativeSettings } from '@shared/protocol';
 import { requestReachOutPermission } from '@/hooks/useReachOut';
+import { choice } from '@/components/settings/choice';
 import { cn } from '@/lib/utils';
+import { useSay, useUi, type Said } from '@/lib/locale';
 
 export type InitiativeDraft = Pick<InitiativeSettings, 'mode' | 'notify'>;
 
@@ -11,66 +11,70 @@ export const initiativeDraftFrom = (s: InitiativeSettings | undefined): Initiati
   mode: s?.mode ?? 'occasional', notify: s?.notify ?? true,
 });
 
-export const initiativePatch = (d: InitiativeDraft): SettingsUpdate['initiative'] => ({ ...d });
-
-const MODES: { value: InitiativeDraft['mode']; label: string; hint: string }[] = [
-  { value: 'off', label: '不打扰', hint: '她永远不会先开口，只有你先说话她才回。' },
-  { value: 'occasional', label: '偶尔', hint: '想起你说过的重要的事（面试、搬家这样有日子的），她会先开口问一句。熟了以后，偶尔也会说起你说过的、她还记着的一句话。23:00–08:00 安静。' },
-  { value: 'often', label: '经常', hint: '在此之上，她会在你常聊天的时段打个招呼。' },
+const MODES: { value: InitiativeDraft['mode']; label: Said; hint: Said }[] = [
+  { value: 'off', label: { zh: '不打扰', en: 'Never' }, hint: { zh: '她永远不会先开口，只有你先说话她才回。', en: 'She never speaks first; she only answers when you do.' } },
+  { value: 'occasional', label: { zh: '偶尔', en: 'Now and then' }, hint: { zh: '想起你说过的有日子的事（面试、搬家），她会先问一句；熟了以后，偶尔说起她还记着的一句话。23:00–08:00 安静。', en: 'When something you mentioned has a date (an interview, a move), she asks first; once you know each other, she sometimes brings up a line she remembers. Quiet 23:00–08:00.' } },
+  { value: 'often', label: { zh: '经常', en: 'Often' }, hint: { zh: '在此之上，她会在你常聊天的时段打个招呼。', en: 'On top of that, she says hello around the times you usually talk.' } },
 ];
 
 const permissionNow = () => (typeof Notification === 'undefined' ? 'unsupported' : Notification.permission);
 
-function Switch({ id, checked, onChange, label }: { id: string; checked: boolean; onChange: (v: boolean) => void; label: string }) {
+function Switch({ id, checked, onChange }: { id: string; checked: boolean; onChange: (v: boolean) => void }) {
   return (
-    <button id={id} type="button" role="switch" aria-checked={checked} aria-label={label} onClick={() => onChange(!checked)}
+    <button id={id} type="button" role="switch" aria-checked={checked} onClick={() => onChange(!checked)}
       className={cn('relative h-5 w-9 flex-none rounded-full border transition-colors',
-        checked ? 'border-primary/60 bg-primary/30' : 'border-border bg-wash')}>
+        checked ? 'border-primary/50 bg-primary/15' : 'border-border bg-wash')}>
       <span className={cn('absolute top-0.5 size-3.5 rounded-full transition-[left,background-color]',
-        checked ? 'left-[18px] bg-primary' : 'left-0.5 bg-muted-foreground')} />
+        checked ? 'left-[18px] bg-primary' : 'left-0.5 bg-muted-foreground/60')} />
     </button>
   );
 }
 
-type Props = { draft: InitiativeDraft; name: string; onChange: (d: InitiativeDraft) => void };
+type Props = { draft: InitiativeDraft; onChange: (d: InitiativeDraft) => void };
 
-/** When and how often she may speak first. */
-export function InitiativeSettingsSection({ draft, name, onChange }: Props) {
+/** When she may speak first: one list, and only the chosen line explained. */
+export function InitiativeSettingsSection({ draft, onChange }: Props) {
+  const ui = useUi();
+  const say = useSay();
   const [permission, setPermission] = useState(permissionNow);
   const set = (patch: Partial<InitiativeDraft>) => onChange({ ...draft, ...patch });
 
   return (
-    <section className="grid gap-3.5 rounded-md border border-border p-3.5" aria-labelledby="initiative-title">
-      <div>
-        <h3 id="initiative-title" className="text-sm font-medium text-foreground">主动找你</h3>
-        <p className="mt-0.5 text-xs text-muted-foreground">
-          {name || 'Ta'} 只在真的有事想说的时候先开口：想起你说过的事、还记着你说过的一句话，或者（在“经常”下）你常聊天的时段。不会因为“很久没聊了”来打扰你。
-        </p>
+    <section className="grid gap-2" aria-labelledby="initiative-title">
+      <h3 id="initiative-title" className="text-[14px] text-foreground">{say('主动找你', 'Reaching out')}</h3>
+      <div role="radiogroup" aria-labelledby="initiative-title" className="grid gap-1">
+        {MODES.map(({ value, label, hint }) => {
+          const on = draft.mode === value;
+          return (
+            <button key={value} type="button" role="radio" aria-checked={on} onClick={() => set({ mode: value })}
+              className={cn(choice(on, 'row'), 'grid grid-cols-[auto_1fr] items-baseline gap-x-2.5 gap-y-1')}>
+              {/* A ring that fills: the rows read as one choice among three, not as text. */}
+              <span aria-hidden="true" className={cn('grid size-3.5 translate-y-[2px] place-items-center rounded-full border transition-colors',
+                on ? 'border-primary' : 'border-muted-foreground/40')}>
+                <span className={cn('size-1.5 rounded-full bg-primary transition-transform duration-200', on ? 'scale-100' : 'scale-0')} />
+              </span>
+              <span>{label[ui]}</span>
+              {on && <span className="col-start-2 text-[13px] leading-relaxed text-muted-foreground">{hint[ui]}</span>}
+            </button>
+          );
+        })}
       </div>
 
-      <div role="radiogroup" aria-labelledby="initiative-title" className="grid gap-1.5">
-        {MODES.map(({ value, label, hint }) => (
-          <button key={value} type="button" role="radio" aria-checked={draft.mode === value} onClick={() => set({ mode: value })}
-            className={cn('grid gap-0.5 rounded-md border p-2.5 text-left transition-colors',
-              draft.mode === value ? 'border-primary/60 bg-primary/5' : 'border-border hover:border-muted-foreground/40')}>
-            <span className={cn('text-sm', draft.mode === value ? 'text-primary' : 'text-foreground')}>{label}</span>
-            <span className="text-xs text-muted-foreground">{hint}</span>
-          </button>
-        ))}
-      </div>
-
-      <div className="flex items-center justify-between gap-2">
-        <label htmlFor="initiative-notify" className="text-sm text-muted-foreground">页面没开着时发系统通知</label>
-        <Switch id="initiative-notify" checked={draft.notify} onChange={notify => set({ notify })} label="系统通知" />
-      </div>
-
-      {permission === 'default' && (
-        <Button type="button" variant="outline" size="sm" className="justify-self-start rounded-full"
-          onClick={async () => setPermission(await requestReachOutPermission())}>
-          <BellRing /> 允许浏览器通知（页面在后台时）
-        </Button>
+      {draft.mode !== 'off' && (
+        <div className="mt-2 flex items-center justify-between gap-4">
+          <label htmlFor="initiative-notify" className="text-[14px] text-foreground">{say('页面没开着时发系统通知', 'Notify me when the app is closed')}</label>
+          <Switch id="initiative-notify" checked={draft.notify} onChange={notify => set({ notify })} />
+        </div>
       )}
-      {permission === 'denied' && <p className="text-xs text-muted-foreground">浏览器通知已被拒绝，可以在地址栏左侧的网站设置里重新打开。</p>}
+      {draft.mode !== 'off' && draft.notify && permission === 'default' && (
+        <button type="button" className="justify-self-start text-[13px] text-primary hover:underline"
+          onClick={async () => setPermission(await requestReachOutPermission())}>
+          {say('允许浏览器通知', 'Allow notifications')}
+        </button>
+      )}
+      {draft.mode !== 'off' && draft.notify && permission === 'denied' && (
+        <p className="text-[13px] text-muted-foreground">{say('浏览器通知已被拒绝，可以在地址栏左侧的网站设置里重新打开。', 'Notifications are blocked. You can turn them back on in the site settings left of the address bar.')}</p>
+      )}
     </section>
   );
 }

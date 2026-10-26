@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
 import { api, type OnboardingState } from '@/lib/api';
 import { audio } from '@/lib/audio';
 import { FIXED, stepOf, type Ask } from '@/features/onboarding/script';
@@ -14,35 +14,6 @@ import { FIXED, stepOf, type Ask } from '@/features/onboarding/script';
 
 /** `locked`: the browser refused sound before any click or keypress. */
 type Played = 'played' | 'locked' | 'failed';
-
-/**
- * How long the boot bar at least takes to cross, so a warm cache does not
- * flash it from 0 to 100 in one frame.
- */
-const BOOT_MIN_MS = 1400;
-
-/**
- * The first thing the page does: warm the fixed-line archives so her first
- * words are instant. Reports progress 0..1 as each archive lands; a failed
- * fetch still counts — boot always reaches 1.
- */
-async function boot(onProgress: (fraction: number) => void): Promise<void> {
-  const ease = (fraction: number) => 1 - Math.pow(1 - fraction, 3);
-  const started = performance.now();
-  const floor = () => Math.min(0.9, (performance.now() - started) / BOOT_MIN_MS);
-  const timer = window.setInterval(() => onProgress(Math.max(ease(floor()), 0.05)), 80);
-  let done = 0;
-  await Promise.all(FIXED.map(async f => {
-    await fetch(`/onboarding/${f.key}.wav`, { cache: 'force-cache' }).catch(() => {});
-    done++;
-    onProgress(Math.max(ease(floor()), done / FIXED.length));
-  }));
-  window.clearInterval(timer);
-  // The last stretch always takes its time: 100% means it, it is not a flash.
-  const rest = BOOT_MIN_MS - (performance.now() - started);
-  if (rest > 0) await new Promise(resolve => setTimeout(resolve, rest));
-  onProgress(1);
-}
 
 /**
  * Plays an archive to the end. Goes through the shared engine so her coil
@@ -79,16 +50,10 @@ export type SpeakOptions = { speak?: boolean };
  */
 export type Line = { text: string; speaking: boolean; clip: string | null; missed: string | null };
 
-export function useOnboarding(voiceReady: boolean) {
-  const [state, setState] = useState<OnboardingState | null>(null);
+/** `initial` is the record loading already fetched, so the meeting is on screen the moment loading hands over. */
+export function useOnboarding(voiceReady: boolean, initial: OnboardingState) {
+  const [state, setState] = useState<OnboardingState>(initial);
   const [line, setLine] = useState<Line | null>(null);
-  /** 0..1 while booting; 1 and holding once the opening may show Begin. */
-  const [bootProgress, setBootProgress] = useState(0);
-
-  useEffect(() => {
-    void api.onboarding().then(setState).catch(() => setState(null));
-    void boot(setBootProgress);
-  }, []);
 
   /** A scripted line: shown as text, spoken when a voice is ready. Resolves when the line is done. */
   const speak = useCallback(async (text: string, { speak = true }: SpeakOptions = {}) => {
@@ -149,5 +114,5 @@ export function useOnboarding(voiceReady: boolean) {
     await api.finishOnboarding(final);
   }, []);
 
-  return { state, line, bootProgress, speak, replay, save, proposeName, finish };
+  return { state, line, speak, replay, save, proposeName, finish };
 }

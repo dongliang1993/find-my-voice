@@ -104,7 +104,7 @@ export type ClientEvent =
   | { type: 'reading'; letterId: string | null };
 
 export type ServerEvent =
-  | { type: 'hello'; messages: ChatMessage[]; status: CompanionStatus; letters: Letter[]; note: Note | null; filedNotes: Note[] }
+  | { type: 'hello'; messages: ChatMessage[]; status: CompanionStatus; letters: Letter[]; note: Note | null }
   /** A new message, or the latest full state of an existing one. */
   | { type: 'message'; message: ChatMessage }
   | { type: 'text_delta'; messageId: string; delta: string }
@@ -129,10 +129,10 @@ export type ServerEvent =
   | { type: 'note_edit'; note: Note; ops: NoteOp[] }
   /** The note was closed on the page: it is gone, and nothing is kept. */
   | { type: 'note_removed'; noteId: string }
-  /** The note was taken off the table and kept: the dock tells of it. */
-  | { type: 'note_filed'; noteId: string; filedNotes: Note[] }
-  /** A dock note back on the table: the dock holds one less. */
-  | { type: 'note_unfiled'; noteId: string; filedNotes: Note[] }
+  /** The note was kept: signed, it became a letter in the inbox, and the table is empty. */
+  | { type: 'note_filed'; noteId: string; letter: Letter }
+  /** A setting changed somewhere other than the settings page — she was asked to, out loud. */
+  | { type: 'settings' }
   | { type: 'error'; code: string; message: string };
 
 export const PCM_SAMPLE_RATE = 24000;

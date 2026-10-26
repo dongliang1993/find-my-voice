@@ -108,10 +108,10 @@ export class ScriptBrain implements Brain {
       const draft = (parsePartialJson(json.slice(0, Math.round((json.length * i) / steps))) ?? {}) as { title?: unknown; blocks?: unknown };
       const progress = { title: toTitle(draft.title), blocks: toBlocks(draft.blocks) };
       const key = JSON.stringify(progress);
-      if (key !== sent) { sent = key; sink({ type: 'note_progress', noteId, ...progress }); }
+      if (key !== sent) { sent = key; sink({ type: 'note_progress', noteId, ...progress, fresh: false }); }
     }
     if (this.stopped) return false;
-    sink({ type: 'note_done', noteId, title: toTitle(note.title), blocks: toBlocks(note.blocks) });
+    sink({ type: 'note_done', noteId, title: toTitle(note.title), blocks: toBlocks(note.blocks), fresh: false });
     return true;
   }
 

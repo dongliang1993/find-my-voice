@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, type RefObject } from 'react';
+import { useLayoutEffect, useRef, useState, type CSSProperties, type RefObject } from 'react';
 import { holdDark } from '@/lib/theme';
 
 export type Mood = 'calm' | 'happy' | 'longing' | 'low';
@@ -100,7 +100,8 @@ export function applyMood(her: RGB, mood: Mood): RGB {
  * Writes the ambient palette onto an element: `--her` (the coral), `--base`
  * (the page) and `--ink`, plus `data-dark`. Re-read every minute; the CSS
  * transition is what makes a change of hour or mood a slow fade rather than a
- * step. Written before paint, so the first frame is already in the right light.
+ * step. Spread the returned props onto the same element, so its first frame
+ * is already in the right light.
  *
  * `now` pins the clock for previewing a time of day. `page` makes the whole
  * page follow the hour too, not only the element: the theme's light or dark
@@ -111,16 +112,22 @@ export function useAmbientTheme(target: RefObject<HTMLElement | null>, mood: Moo
   const moodRef = useRef(mood);
   moodRef.current = mood;
 
+  // Children's layout effects run before this one, and any that read layout or
+  // style resolve the element without the palette — so the colours start from
+  // transparent and the 2.5s transition washes them in. Rendering the first
+  // palette inline means there is never a moment without it.
+  const [first] = useState(() => {
+    const { style, dark } = paletteAt(now ?? new Date(), mood);
+    return { style: style as CSSProperties, 'data-dark': dark ? 'true' : 'false' };
+  });
+
   useLayoutEffect(() => {
     const el = target.current;
     if (!el) return;
     const hold = page ? holdDark() : null;
     const apply = () => {
-      const { her, base } = colorsAt(now ?? new Date());
-      const dark = luminance(base) < 0.45;
-      el.style.setProperty('--her', rgbToHex(applyMood(her, moodRef.current)));
-      el.style.setProperty('--base', rgbToHex(base));
-      el.style.setProperty('--ink', dark ? INK_DARK : INK_LIGHT);
+      const { style, dark } = paletteAt(now ?? new Date(), moodRef.current);
+      for (const [name, value] of Object.entries(style)) el.style.setProperty(name, value);
       el.dataset.dark = dark ? 'true' : 'false';
       hold?.set(dark);
     };
@@ -128,4 +135,15 @@ export function useAmbientTheme(target: RefObject<HTMLElement | null>, mood: Moo
     const id = now ? undefined : window.setInterval(apply, 60_000);
     return () => { window.clearInterval(id); hold?.release(); };
   }, [target, mood, now, page]);
+
+  return first;
+}
+
+function paletteAt(date: Date, mood: Mood) {
+  const { her, base } = colorsAt(date);
+  const dark = luminance(base) < 0.45;
+  return {
+    style: { '--her': rgbToHex(applyMood(her, mood)), '--base': rgbToHex(base), '--ink': dark ? INK_DARK : INK_LIGHT },
+    dark,
+  };
 }

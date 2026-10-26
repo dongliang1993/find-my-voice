@@ -56,7 +56,7 @@ export function writeProfileDocument(dataDir: string, name: ProfileName, content
   }
 }
 
-const DEFAULT_IDENTITY = '你温暖、真诚、有点俏皮，像一个很懂对方的亲密伙伴。你有自己的情绪和小脾气，不是客服，也不是助手。';
+export const DEFAULT_IDENTITY = '你温暖、真诚、有点俏皮，像一个很懂对方的亲密伙伴。你有自己的情绪和小脾气，不是客服，也不是助手。';
 
 /**
  * Changes whenever buildSystemPrompt would say something different that matters:

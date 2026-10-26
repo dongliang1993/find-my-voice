@@ -437,31 +437,31 @@ export class ChatStore {
     return row ? toNote(row) : null;
   }
 
-  // ---- filed notes ----
-  // The notes taken off the table and kept: what the dock holds. They live
-  // apart from the one on the table — that one is only wanted on the spot —
-  // so nothing that happens to it touches these.
+  // ---- kept notes ----
 
-  /** A note off the table and into the dock. It keeps its own id and version. */
-  fileNote(note: Note): void {
-    this.db.prepare('INSERT OR REPLACE INTO filed_notes (id, title, status, version, blocks_json, created_at) VALUES (?, ?, ?, ?, ?, ?)')
-      .run(note.id, note.title, note.status, note.version, JSON.stringify(note.blocks), note.createdAt);
+  /**
+   * A note the user kept: signed and dated now, it is a letter from here on —
+   * finished, unread, in the inbox. The note itself leaves the table.
+   */
+  keepNote(note: Note, signature: string): Letter {
+    const id = randomUUID();
+    this.db.prepare(`INSERT INTO letters (id, title, status, version, blocks_json, signature, created_at)
+      VALUES (?, ?, 'done', 1, ?, ?, ?)`).run(id, note.title, JSON.stringify(note.blocks), signature, this.clock().toISOString());
+    this.removeNote(note.id);
+    return this.letter(id)!;
   }
 
-  /** Every note the dock holds, newest first. */
-  filedNotes(): Note[] {
-    return (this.db.prepare('SELECT * FROM filed_notes ORDER BY created_at DESC, rowid DESC').all() as NoteRow[]).map(toNote);
-  }
-
-  /** One of them, back on the table: it leaves the dock. */
-  unfileNote(id: string): Note | null {
-    const row = this.db.prepare('SELECT * FROM filed_notes WHERE id = ?').get(id) as NoteRow | undefined;
-    if (!row) return null;
-    this.db.prepare('DELETE FROM filed_notes WHERE id = ?').run(id);
-    this.db.exec('DELETE FROM notes');
-    this.db.prepare('INSERT INTO notes (id, title, status, version, blocks_json, created_at) VALUES (?, ?, ?, ?, ?, ?)')
-      .run(row.id, row.title, 'done', row.version, row.blocks_json, row.created_at);
-    return this.note(id);
+  /**
+   * Notes kept before a kept note became a letter. Each moves into the inbox
+   * once, with the date it was written, and leaves the old table.
+   */
+  moveFiledNotes(signature: string): Letter[] {
+    const rows = this.db.prepare('SELECT * FROM filed_notes ORDER BY created_at, rowid').all() as NoteRow[];
+    const insert = this.db.prepare(`INSERT OR IGNORE INTO letters (id, title, status, version, blocks_json, signature, created_at)
+      VALUES (?, ?, 'done', ?, ?, ?, ?)`);
+    for (const row of rows) insert.run(row.id, row.title, row.version, row.blocks_json, signature, row.created_at);
+    this.db.exec('DELETE FROM filed_notes');
+    return rows.map(row => this.letter(row.id)).filter((l): l is Letter => l !== null);
   }
 
   getState(key: string): string | null {

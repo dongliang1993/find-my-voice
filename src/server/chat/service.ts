@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
-import type { Brain, BrainEvent, BrainFactory } from '../brain/types.js';
-import type { AudioInfo, ChatMessage, CompanionStatus, InitiativeKind, LetterBlock, LetterOp, Note, ServerEvent } from '../../shared/protocol.js';
+import type { Brain, BrainEvent, BrainFactory, PreferencesPatch } from '../brain/types.js';
+import type { AudioInfo, ChatMessage, CompanionStatus, InitiativeKind, Letter, LetterBlock, LetterOp, Note, ServerEvent } from '../../shared/protocol.js';
 import type { ChatStore } from './store.js';
 import { plainText } from '../../shared/plain.js';
 import { applyOps, describeLetter, describeNote, letterSummary, nextBlockNumber, parseNoteText } from '../letters/schema.js';
@@ -25,6 +25,13 @@ export type ChatServiceOptions = {
   promptVersion?: () => string;
   /** Her name as she signs a letter. */
   signature?: () => string;
+  /**
+   * A preference she was asked to change out loud. Applied by whoever owns the
+   * settings; the answer says what it is now, for her to confirm.
+   */
+  updatePreferences?: (patch: PreferencesPatch) => string;
+  /** Whether a voice is set up to say a typed line with; assumed so when not given. */
+  canSpeak?: () => boolean;
   onLog?: (line: string) => void;
 };
 
@@ -94,7 +101,9 @@ export class ChatService {
   /** Letters she has already retried on her own; a second failure is left for the user to retry. */
   private retried = new Set<string>();
 
-  constructor(private options: ChatServiceOptions) {}
+  constructor(private options: ChatServiceOptions) {
+    options.store.moveFiledNotes(options.signature?.() ?? '');
+  }
 
   subscribe(listener: Listener) {
     this.listeners.add(listener);
@@ -103,7 +112,7 @@ export class ChatService {
 
   snapshot(): Extract<ServerEvent, { type: 'hello' }> {
     const { store } = this.options;
-    return { type: 'hello', messages: store.recent(), status: this.status, letters: store.letters(), note: store.note(), filedNotes: store.filedNotes() };
+    return { type: 'hello', messages: store.recent(), status: this.status, letters: store.letters(), note: store.note() };
   }
 
   /** A turn is running or waiting; the initiative scheduler stays out of the way. */
@@ -348,31 +357,20 @@ export class ChatService {
   }
 
   /**
-   * The note taken off the table and kept: the dock holds it from here. The
-   * table is empty after — only one note is ever on it — and every page is
-   * told what the dock now holds.
+   * The note kept: she signs it, and it goes into the inbox as a letter —
+   * dated now, unread. The table is empty after; her next note is a new one.
+   * A note still being written is kept as far as it got.
    */
-  fileNote(): Note[] | null {
+  fileNote(): Letter | null {
     const { store } = this.options;
     const note = store.note();
-    if (!note) return null;
-    const kept = note.status === 'writing' ? { ...note, status: 'done' as const } : note;
-    store.fileNote(kept);
-    store.removeNote(note.id);
-    const filedNotes = store.filedNotes();
-    this.emit({ type: 'note_filed', noteId: note.id, filedNotes });
-    return filedNotes;
-  }
-
-  /** One of the dock's notes, back on the table. The dock holds one less. */
-  unfileNote(noteId: string): Note | null {
-    const { store } = this.options;
-    const note = store.unfileNote(noteId);
-    if (note) {
-      this.emit({ type: 'note', note });
-      this.emit({ type: 'note_unfiled', noteId, filedNotes: store.filedNotes() });
-    }
-    return note;
+    if (!note || !note.blocks.length) return null;
+    const letter = store.keepNote(note, this.options.signature?.() ?? '');
+    const message = this.publish(store.append({ role: 'assistant', kind: 'letter', text: letterSummary(letter), letterId: letter.id }));
+    store.linkLetter(letter.id, message.id);
+    this.emit({ type: 'letter', letter });
+    this.emit({ type: 'note_filed', noteId: note.id, letter });
+    return letter;
   }
 
   /**
@@ -468,9 +466,10 @@ export class ChatService {
    * cannot collide with its own. Nothing there yet, or one the page closed
    * while she wrote: a new note, and it goes up on its own.
    */
-  private putNote(noteId: string, title: string, blocks: LetterBlock[]): Note | null {
+  private putNote(noteId: string, title: string, blocks: LetterBlock[], fresh: boolean): Note | null {
     const { store } = this.options;
     const existing = store.note();
+    if (fresh && existing && existing.id !== noteId) return this.wipeNote(existing.id, title, blocks, 'done');
     // She wrote nothing but a title, or nothing at all: nothing goes up — and
     // the card that came up with the call goes back down with it.
     if (!blocks.length && (!existing || existing.id === noteId)) {
@@ -490,12 +489,30 @@ export class ChatService {
     return note;
   }
 
-  private draftNote(noteId: string, title: string, blocks: LetterBlock[]) {
+  /**
+   * A new topic on the card already up: what was on it is wiped and the new
+   * lines take its place. The card is the same one — it stays where it is —
+   * and what it said before is still in the conversation.
+   */
+  private wipeNote(id: string, title: string, blocks: LetterBlock[], status?: 'done'): Note | null {
     const { store } = this.options;
+    if (!blocks.length && status) return store.note(id);
+    const note = store.writeNote(id, { title, blocks, status });
+    if (note) this.emit({ type: 'note', note });
+    return note;
+  }
+
+  private draftNote(noteId: string, title: string, blocks: LetterBlock[], fresh: boolean) {
+    const { store } = this.options;
+    const existing = store.note();
+    if (fresh && existing && existing.id !== noteId) {
+      // Nothing of the new topic yet: the old lines stay until the first new one lands.
+      if (blocks.length) this.wipeNote(existing.id, title, blocks);
+      return;
+    }
     // Appending to one already on the table: the streamed call is only the new
     // lines, written on past its base; what was already there is kept under
     // them, unmoved, while she writes.
-    const existing = store.note();
     if (existing && existing.id !== noteId) {
       const firstFree = nextBlockNumber(this.noteBase);
       const renumbered = blocks.map((block, i) => ({ ...block, id: `b${firstFree + i}` }));
@@ -544,6 +561,26 @@ export class ChatService {
     this.emit({ type: 'letter_edit', letter: revised, ops });
     return [`改好了，对方能看到你在信上改。\n${describeLetter(revised)}`, errors.length ? `没改成的：${errors.join('；')}` : '']
       .filter(Boolean).join('\n');
+  }
+
+  private keepNoteAsked(): string {
+    const letter = this.fileNote();
+    return letter
+      ? `收好了：签上你的名字，放进了信箱，标题「${letter.title || '无题'}」。桌上空了，下次写便签是新的一张。`
+      : '桌上没有便签可以收。';
+  }
+
+  private preferencesAsked(patch: PreferencesPatch): string {
+    if (!patch.language && !patch.initiative) return '没有要改的。';
+    if (!this.options.updatePreferences) return '现在改不了设置。';
+    try {
+      const result = this.options.updatePreferences(patch);
+      this.emit({ type: 'settings' });
+      return result;
+    } catch (error) {
+      this.options.onLog?.(`preferences failed: ${(error as Error).message}`);
+      return '没改成，跟对方说一声可以去设置里改。';
+    }
   }
 
   /** Stops her mid-reply: the current turn, anything queued behind it, and any voice still being made. */
@@ -619,13 +656,17 @@ export class ChatService {
       } else if (event.type === 'note_start') {
         if (live) { noteStarted = event.noteId; this.beginNote(event.noteId); }
       } else if (event.type === 'note_progress') {
-        if (live) this.draftNote(event.noteId, event.title, event.blocks);
+        if (live) this.draftNote(event.noteId, event.title, event.blocks, event.fresh);
       } else if (event.type === 'note_done') {
         if (!live) return;
         noteStarted = null;
-        this.putNote(event.noteId, event.title, event.blocks);
+        this.putNote(event.noteId, event.title, event.blocks, event.fresh);
       } else if (event.type === 'note_edit') {
         event.respond(live ? this.editNote(event.ops) : '现在不能改便签。');
+      } else if (event.type === 'note_keep') {
+        event.respond(live ? this.keepNoteAsked() : '现在不能收便签。');
+      } else if (event.type === 'preferences') {
+        event.respond(this.preferencesAsked(event.patch));
       } else if (event.type === 'session_lost') {
         lost = true;
       } else {
@@ -688,11 +729,38 @@ export class ChatService {
   }
 
   private startVoice(raw: string, emotion: string | null, initiative: InitiativeKind | null, audioId = randomUUID()): string {
-    const { store, voice } = this.options;
     // Read aloud, a stray "**" or "<p>" is noise in her mouth, not formatting.
     const text = plainText(raw).trim();
+    const message = this.publish(this.options.store.append({
+      role: 'assistant', kind: 'voice', text, emotion, initiative,
+      audio: { id: audioId, state: 'streaming', durationSeconds: null, error: null },
+    }));
+    this.speakInto(message.id, text, audioId);
+    return message.id;
+  }
+
+  /**
+   * Says a line she only typed, once, when the user asks to hear it. The
+   * voice is kept on that message, so every later replay is the same
+   * recording. Returns the audio id, or null when there is no such line or no
+   * voice to say it with. A line already voiced just returns its audio.
+   */
+  voiceMessage(messageId: string): string | null {
+    const message = this.options.store.get(messageId);
+    if (message?.role !== 'assistant' || message.kind === 'letter') return null;
+    if (message.audio && message.audio.state !== 'failed') return message.audio.id;
+    const text = plainText(message.text).trim();
+    if (!text || this.options.canSpeak?.() === false) return null;
+    const audioId = randomUUID();
+    this.publish(this.options.store.update(messageId, { audio: { id: audioId, state: 'streaming', durationSeconds: null, error: null } }));
+    this.speakInto(messageId, text, audioId);
+    return audioId;
+  }
+
+  /** Streams `text` as the voice of a message that already carries `audioId`, settling its state when done. */
+  private speakInto(messageId: string, text: string, audioId: string) {
+    const { store, voice } = this.options;
     const audio = (patch: Partial<AudioInfo>): AudioInfo => ({ id: audioId, state: 'streaming', durationSeconds: null, error: null, ...patch });
-    const message = this.publish(store.append({ role: 'assistant', kind: 'voice', text, emotion, audio: audio({}), initiative }));
     const controller = new AbortController();
     const done = voice.speak(audioId, text, {
       signal: controller.signal,
@@ -700,19 +768,18 @@ export class ChatService {
       onLine: line => this.emit({ type: 'speech_line', audioId, ...line }),
     }).then(
       ({ durationSeconds }) => {
-        this.publish(store.update(message.id, { audio: audio({ state: 'ready', durationSeconds }) }));
+        this.publish(store.update(messageId, { audio: audio({ state: 'ready', durationSeconds }) }));
       },
       (error: Error) => {
         if (controller.signal.aborted) {
-          this.publish(store.update(message.id, { audio: audio({ state: 'stopped' }) }));
+          this.publish(store.update(messageId, { audio: audio({ state: 'stopped' }) }));
           return;
         }
         this.options.onLog?.(`voice failed: ${error.message}`);
-        this.publish(store.update(message.id, { audio: audio({ state: 'failed', error: error.message }) }));
+        this.publish(store.update(messageId, { audio: audio({ state: 'failed', error: error.message }) }));
       },
     ).finally(() => { this.voiceJobs.delete(audioId); });
     this.voiceJobs.set(audioId, { controller, done });
-    return message.id;
   }
 
   async close() {

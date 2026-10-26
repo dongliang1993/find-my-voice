@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import type { ChatMessage } from '../src/shared/protocol.js';
-import { latestLine } from '../web/src/features/stage/line.js';
+import { lastTake, latestLine } from '../web/src/features/stage/line.js';
 
 const message = (patch: Partial<ChatMessage> & Pick<ChatMessage, 'role' | 'text'>): ChatMessage => ({
   id: crypto.randomUUID(), kind: 'text', emotion: null, audio: null,
@@ -37,4 +37,28 @@ test('an audible voice is still shown once the user has spoken over it', () => {
 test('nothing said yet is no line', () => {
   assert.equal(latestLine([], null), null);
   assert.equal(latestLine([message({ role: 'user', text: '在吗' })], null), null);
+});
+
+test('the replay is the voice of her latest turn, past the text that follows it', () => {
+  const messages = [voice('a0', 'Earlier.'), message({ role: 'user', text: '说点什么' }), voice('a1', 'Hey, Leo.'), message({ role: 'assistant', text: 'Or tell me.' })];
+  assert.deepEqual(lastTake(messages), { messageId: messages[2]!.id, audioId: 'a1' });
+});
+
+test('a turn she spoke first is replayed the same way', () => {
+  const messages = [message({ role: 'user', text: '晚安' }), voice('a1', 'Bye.'), { ...voice('a2', 'Morning.'), initiative: 'followup' as const }];
+  assert.equal(lastTake(messages)?.audioId, 'a2');
+});
+
+test('a turn she only typed is its last line, still to be voiced', () => {
+  const typed = message({ role: 'assistant', text: 'Typed.' });
+  assert.deepEqual(lastTake([voice('a1', 'Hey.'), message({ role: 'user', text: '嗯' }), typed]), { messageId: typed.id, audioId: null });
+});
+
+test('once the user speaks again, there is nothing to replay', () => {
+  assert.equal(lastTake([voice('a1', 'Hey.'), message({ role: 'user', text: '嗯' })]), null);
+});
+
+test('a voice that failed to be made is tried again as typed', () => {
+  const failed = message({ role: 'assistant', kind: 'voice', text: 'x', audio: { id: 'a1', state: 'failed', durationSeconds: null, error: 'no' } });
+  assert.deepEqual(lastTake([failed]), { messageId: failed.id, audioId: null });
 });

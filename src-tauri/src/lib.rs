@@ -102,6 +102,11 @@ pub fn run() {
     tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![ping])
         .setup(|app| {
+            // In dev the beforeDevCommand already runs server + Vite, and the
+            // window starts on devUrl — no sidecar to spawn, nothing to navigate.
+            if cfg!(debug_assertions) {
+                return Ok(());
+            }
             let handle = app.handle().clone();
             let root = server_root(&handle);
             let port = free_port();

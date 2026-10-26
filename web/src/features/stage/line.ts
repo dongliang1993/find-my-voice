@@ -30,3 +30,23 @@ export function latestLine(messages: ChatMessage[], playingId: string | null): L
   }
   return null;
 }
+
+/** What clicking her coil says again, and the voice it already has, if any. */
+export type Take = { messageId: string; audioId: string | null };
+
+/**
+ * Her latest turn, prompted or not: its voice when she spoke it, otherwise
+ * her last typed line, to be said aloud the first time it is asked for. Once
+ * the user has spoken since, there is nothing of this conversation to replay.
+ */
+export function lastTake(messages: ChatMessage[]): Take | null {
+  let typed: ChatMessage | null = null;
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const m = messages[i]!;
+    if (m.role === 'user') break;
+    if (m.role !== 'assistant' || m.kind === 'letter') continue;
+    if (m.audio && m.audio.state !== 'failed') return { messageId: m.id, audioId: m.audio.id };
+    if (!typed && plainText(m.text).trim()) typed = m;
+  }
+  return typed && { messageId: typed.id, audioId: null };
+}

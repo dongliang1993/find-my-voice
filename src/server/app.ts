@@ -53,8 +53,19 @@ export class App {
     });
     this.chat = new ChatService({
       store: this.store, voice: this.voice, onLog: log,
+      canSpeak: () => voiceReady(this.settings.voice),
       createBrain: ({ fresh }) => this.createBrain(fresh),
       signature: () => this.settings.companion.name,
+      // Not a full settings change: the brain stays up mid-turn. A new language
+      // changes the prompt version, so the next message rebuilds it anyway.
+      updatePreferences: ({ language, initiative }) => {
+        this.settings = updateSettings(this.dataDir, {
+          ...(language ? { companion: { language } } : {}),
+          ...(initiative ? { initiative: { mode: initiative } } : {}),
+        });
+        const { companion, initiative: now } = this.settings;
+        return `改好了。回复语言：${({ auto: '跟着对方', zh: '中文', en: '英文' })[companion.language]}；主动找对方：${({ off: '不主动', occasional: '偶尔', often: '经常' })[now.mode]}。用一句口语跟对方确认。`;
+      },
       promptVersion: () => personaVersion(this.dataDir, {
         companionName: this.settings.companion.name,
         userName: this.settings.companion.userName,

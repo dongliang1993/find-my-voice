@@ -11,3 +11,4 @@ playwright-report/
 *.log
 src-tauri/target/
 src-tauri/gen/schemas/
+.DS_Store

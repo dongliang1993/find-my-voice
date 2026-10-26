@@ -1,112 +1,87 @@
 import { useEffect, useRef } from 'react';
-import { motion } from 'motion/react';
-import { CARD, CARD_SURFACE, CENTRE, CORAL, CORAL_CLOSED, CORAL_SURFACE, MAT, PANEL, SCREEN } from '@/features/onboarding/layout';
+import { AnimatePresence, motion } from 'motion/react';
+import { Spiral } from '@/components/Spiral';
+import { useBoot } from '@/features/loading/boot';
+import {
+  CARD, CARD_SURFACE, CORAL, CORAL_CLOSED, CORAL_SURFACE, HER_COLUMN, MAT, PANEL, SCREEN, VIGNETTE,
+  STAGE_CAPTION, STAGE_COIL, STAGE_LINE, STAGE_PANEL,
+} from '@/features/onboarding/layout';
 import { useAmbientTheme } from '@/features/stage/ambient';
+import { STAGE_REST } from '@/features/stage/state';
+import { useSay } from '@/lib/locale';
 import { cn } from '@/lib/utils';
 import { useGlobal } from '@/store/global';
 
-/** How long the line takes to cross. Long enough to read as a real wait, short enough not to be one. */
-const DRAW_MS = 2500;
-/** How long the finished line is held before it fades. */
-const HOLD_MS = 420;
-/** How long the fade off takes. */
-const FADE_MS = 420;
-
-/** Slow, fast, slow — the same curve her coil draws with. */
-const easeInOutQuad = (d: number) => d < 0.5 ? 2 * d * d : 1 - (-2 * d + 2) ** 2 / 2;
+/** The line's one breath when everything is in, before the next screen takes over. */
+const BREATH_MS = 1100;
+/** The screen under the gate draws the same line in the same place, so leaving is only a short fade. */
+const FADE_MS = 300;
 
 /**
- * The line from the opening, drawn on a canvas the way her coil is: a faint
- * track with the line running out across it over DRAW_MS. Nothing here goes
- * through React state, so it holds its frame rate the way the coil does.
- */
-function LoadingLine() {
-  const canvas = useRef<HTMLCanvasElement>(null);
-
-  useEffect(() => {
-    const el = canvas.current;
-    const ctx = el?.getContext('2d');
-    if (!el || !ctx) return;
-    const still = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    const started = performance.now();
-    let frame = 0;
-
-    const draw = (now: number) => {
-      const dpr = window.devicePixelRatio || 1;
-      const size = el.clientWidth;
-      if (el.width !== Math.round(size * dpr)) el.width = el.height = Math.round(size * dpr);
-
-      const d = still ? 1 : Math.min(1, (now - started) / DRAW_MS);
-      const reach = easeInOutQuad(d);
-      const half = size * 0.4;
-      const width = Math.max(1, size / 70);
-
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      ctx.clearRect(0, 0, size, size);
-      ctx.lineCap = 'round';
-      // Inherited from the panel the line sits on, exactly as Spiral reads it.
-      ctx.strokeStyle = getComputedStyle(el).getPropertyValue('--spiral').trim() || 'currentColor';
-
-      // The faint track the line draws over.
-      ctx.globalAlpha = 0.25;
-      ctx.lineWidth = width;
-      ctx.beginPath();
-      ctx.moveTo(size / 2 - half, size / 2);
-      ctx.lineTo(size / 2 + half, size / 2);
-      ctx.stroke();
-
-      // Only the part reached so far exists.
-      ctx.globalAlpha = 1;
-      ctx.lineWidth = width * 1.15;
-      ctx.beginPath();
-      ctx.moveTo(size / 2 - half, size / 2);
-      ctx.lineTo(size / 2 - half + 2 * half * reach, size / 2);
-      ctx.stroke();
-
-      if (d < 1) frame = requestAnimationFrame(draw);
-    };
-
-    frame = requestAnimationFrame(draw);
-    return () => cancelAnimationFrame(frame);
-  }, []);
-
-  return <canvas ref={canvas} aria-hidden="true" className="size-32 flex-none sm:size-40" />;
-}
-
-/**
- * The opening's own mat and coral panel, stood up while the first fetch is
- * out, so the hand-off to it is a dissolve and not a jump.
- *
- * The line always draws the full way; `ready` only decides when the fade
- * begins, and never before the line has been seen to arrive.
+ * Loading is her line being drawn: out from the middle towards both ends, as
+ * far as what has to be ready is ready. Once it all is, the line breathes
+ * once and hands over in place — to Begin over the same flat line on a first
+ * meeting, or to the stage, already in the stage's coil. So it is drawn where
+ * and as the next screen keeps it, and only once that screen is known.
  */
 export function LoadingGate() {
-  const ready = useGlobal(store => store.ready);
-  const started = useRef(performance.now());
+  const known = useGlobal(store => store.ready);
+  const first = useGlobal(store => store.onboarding?.completedAt === null);
+  const { reach, done, slow, enter } = useBoot();
+  const say = useSay();
   const screen = useRef<HTMLDivElement>(null);
   // Already in the hour's light, so neither the first meeting nor the stage under it changes the weather.
-  useAmbientTheme(screen, 'calm', { page: true });
+  const ambient = useAmbientTheme(screen, 'calm', { page: true });
 
-  // On the render where `ready` flips: how much of the draw is left to wait for.
-  const closing = ready ? Math.max(0, DRAW_MS - (performance.now() - started.current)) : DRAW_MS;
+  useEffect(() => {
+    if (!done) return;
+    const timer = window.setTimeout(enter, BREATH_MS);
+    return () => window.clearTimeout(timer);
+  }, [done, enter]);
+
+  const breath = done ? 1 : 0;
+  const quiet = (
+    <AnimatePresence>
+      {slow && (
+        <motion.p initial={{ opacity: 0 }} animate={{ opacity: 0.7 }} exit={{ opacity: 0 }} transition={{ duration: 0.8 }}
+          className="absolute inset-x-0 top-full mt-2 text-center text-[13px] whitespace-nowrap">
+          {say('网络有点慢，再等我一下', 'The network is slow. Give me a moment.')}
+        </motion.p>
+      )}
+    </AnimatePresence>
+  );
 
   return (
-    <motion.div ref={screen}
-      role="status"
-      aria-label="正在启动"
-      // The delay is the line finishing plus a beat to read it, not dead time.
-      exit={{ opacity: 0, transition: { duration: FADE_MS / 1000, delay: (closing + HOLD_MS) / 1000, ease: 'easeIn' } }}
+    <motion.div ref={screen} {...ambient} role="status" aria-label={say('正在启动', 'Starting')}
+      exit={{ opacity: 0, transition: { duration: FADE_MS / 1000, ease: 'easeIn' } }}
       className={cn(SCREEN, 'fixed inset-0 z-[100]')}>
       <div className="glow pointer-events-none absolute inset-x-0 top-0 -z-10 h-[70%]" aria-hidden="true" />
       <div className="grain pointer-events-none absolute inset-0 z-50" aria-hidden="true" />
 
-      {/* The same card the first meeting stands up, to the pixel, so the line hands over in place. */}
+      {/* The same card the first meeting and the stage stand up, to the pixel, so the line hands over in place. */}
       <div className={cn(CARD, CARD_SURFACE)}>
         <div className={PANEL} />
         <div className={MAT} />
-        {/* All coral, as the first meeting opens: nothing has been asked yet. */}
-        <section className={cn(CORAL, CORAL_CLOSED, CORAL_SURFACE, '[--spiral:var(--os1-ink)]')}>
-          <div className={CENTRE}><LoadingLine /></div>
+        <section className={cn(CORAL, CORAL_CLOSED, CORAL_SURFACE, 'overflow-hidden')}>
+          <div className={VIGNETTE} aria-hidden="true" />
+          {known && first && (
+            <div className={cn('pointer-events-none absolute inset-0', HER_COLUMN)}>
+              <div className={cn(STAGE_COIL, 'relative [--spiral:var(--os1-ink)]')}>
+                <Spiral thinking={false} stage="asleep" reach={reach} breath={breath} rest={STAGE_REST} weight={1 / 70} className="size-full" />
+                {quiet}
+              </div>
+            </div>
+          )}
+          {known && !first && (
+            <div className={cn(STAGE_PANEL, 'text-white')}>
+              <div className={STAGE_CAPTION} />
+              <div className={cn(STAGE_COIL, 'relative [--spiral:#fff]')}>
+                <Spiral thinking={false} reach={reach} breath={breath} rest={STAGE_REST} weight={1 / 70} className="size-full" />
+                {quiet}
+              </div>
+              <div className={cn('w-full', STAGE_LINE)} />
+            </div>
+          )}
         </section>
       </div>
     </motion.div>

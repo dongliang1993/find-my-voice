@@ -9,17 +9,16 @@ const POINTS = 160;
 const TURNS = 3.2;
 const TILT = 0.5;
 const GROW_MS = 1600;
-/** How long the word takes to stretch out into her line. */
-export const UNFOLD_MS = 900;
-/** The word is drawn at this size and scaled from here, so the stretch is a transform, not a re-layout. */
-const FONT_PX = 28;
+/** One breath of the resting line: up and back down. */
+const BREATH_MS = 1100;
 
 /**
- * asleep: the word alone. drawing: the word stretches out left and right until
- * it is her line. awake: that same line coils up into her. A spiral mounted
- * awake starts fully coiled.
+ * asleep: her line, lying flat.
+ * awake: that same line coils up into her. A spiral mounted awake starts
+ * fully coiled.
+ * Either way it is drawn out from the middle as far as `reach`.
  */
-export type SpiralStage = 'asleep' | 'drawing' | 'awake';
+export type SpiralStage = 'asleep' | 'awake';
 
 type Props = {
   thinking: boolean;
@@ -31,12 +30,12 @@ type Props = {
   tone?: string;
   /** Line width as a fraction of the canvas size. */
   weight?: number;
-  /**
-   * A word drawn on the same canvas as the line. On `drawing` it stretches
-   * sideways into the line itself — no seam between word and line, because
-   * there is no seam: one surface, one continuous shape.
-   */
-  label?: string | null;
+  /** How much of the line exists, 0..1, from the middle out. Changes glide rather than jump. */
+  reach?: number;
+  /** Asleep: the pointer is on her line, and it stirs. */
+  hover?: boolean;
+  /** Bumped to have the line breathe once: the loading is done, she is here. */
+  breath?: number;
   /**
    * The user is speaking to her. She draws in to a quiet breath and holds
    * still. The coil only ever shows her own voice; the user's has its own
@@ -50,13 +49,14 @@ type Props = {
    * A change eases over a second or so rather than snapping.
    */
   rest?: number;
+  /**
+   * The user is typing to her: the line narrows to half its width and a
+   * hairline, barely moving — listening — and `keystroke`, bumped on every
+   * key, sends one small swell through it.
+   */
+  typing?: boolean;
+  keystroke?: number;
   className?: string;
-};
-
-/** 0 before `a`, 1 after `b`, eased in between. */
-const smoothstep = (a: number, b: number, value: number) => {
-  const t = Math.min(1, Math.max(0, (value - a) / (b - a)));
-  return t * t * (3 - 2 * t);
 };
 
 /**
@@ -64,50 +64,73 @@ const smoothstep = (a: number, b: number, value: number) => {
  * above. Idle, it breathes and turns slowly; while she thinks it turns
  * faster; while she speaks it opens up and spins with her loudness.
  */
-export function Spiral({ thinking, stage = 'awake', tone, weight = 1 / 40, label = null, listening = false, rest = 1, className }: Props) {
+export function Spiral({ thinking, stage = 'awake', tone, weight = 1 / 40, reach = 1, hover = false, breath = 0, listening = false, rest = 1, typing = false, keystroke = 0, className }: Props) {
   const canvas = useRef<HTMLCanvasElement>(null);
   const busy = useRef(thinking);
   const stroke = useRef('#e2574c');
-  const ink = useRef('serif');
-  // When the word started stretching and when the line started coiling; 0 means long ago (already done).
-  const unfolded = useRef<number | null>(stage === 'awake' ? 0 : null);
+  /** The stroke at no opacity, for the line's softened ends. */
+  const clear = useRef('rgba(226,87,76,0)');
+  // When the line started coiling; 0 means long ago (already done).
   const born = useRef<number | null>(stage === 'awake' ? 0 : null);
   const current = useRef(stage);
-  /** When the word first appeared, so it fades in instead of popping. */
-  const shown = useRef<number | null>(null);
-  const word = useRef(label);
+  const reachTarget = useRef(reach);
+  reachTarget.current = reach;
+  const hoverRef = useRef(hover);
+  hoverRef.current = hover;
+  /** When the last breath started. */
+  const breathed = useRef<number | null>(null);
   const ear = useRef(listening);
+  const typingRef = useRef(typing);
+  /** 0..1, decaying: what is left of the last keystroke's swell. */
+  const swell = useRef(0);
   const restTarget = useRef(rest);
   restTarget.current = rest;
   /** Restarts a loop that settled on a still frame (reduced motion) or paused while hidden. */
   const wake = useRef<() => void>(() => {});
   const { dark } = useTheme();
 
-  if (label && shown.current === null) shown.current = performance.now();
-  word.current = label;
   useEffect(() => { busy.current = thinking; wake.current(); }, [thinking]);
   useEffect(() => { current.current = stage; wake.current(); }, [stage]);
   useEffect(() => { ear.current = listening; wake.current(); }, [listening]);
-  useEffect(() => { wake.current(); }, [rest]);
+  useEffect(() => { wake.current(); }, [rest, reach, hover]);
+  useEffect(() => {
+    if (!breath) return;
+    breathed.current = performance.now();
+    wake.current();
+  }, [breath]);
+  useEffect(() => { typingRef.current = typing; wake.current(); }, [typing]);
+  useEffect(() => {
+    if (!keystroke) return;
+    swell.current = Math.min(1, swell.current + 0.6);
+    wake.current();
+  }, [keystroke]);
   useEffect(() => {
     if (!canvas.current) return;
     const style = getComputedStyle(canvas.current);
     stroke.current = style.getPropertyValue('--spiral').trim() || stroke.current;
-    // The letter face, the one .letter would have set on a span.
-    ink.current = style.getPropertyValue('--font-letter').trim() || style.fontFamily || ink.current;
-  }, [tone, dark, label]);
+    clear.current = transparentOf(canvas.current, stroke.current);
+  }, [tone, dark]);
 
   useEffect(() => {
     const el = canvas.current;
     const ctx = el?.getContext('2d');
     if (!el || !ctx) return;
     const still = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    let phase = 0;
+    // Idle, the phase runs at a steady rate, so seeding it from the clock lets
+    // a spiral mounted under another one (the gate's, fading out) turn in step with it.
+    let phase = (performance.now() / 1000) * 0.8;
     let last = performance.now();
     let open = 0;
     /** 0..1, eased: how far she has drawn in to listen. */
     let hush = 0;
     let calm = restTarget.current;
+    /** 0..1, eased: how far the line has narrowed for typing. */
+    let typed = typingRef.current ? 1 : 0;
+    /** How much of the line is drawn, eased towards `reach`. */
+    // It picks the line up as far as it already reaches: the screen before drew it there.
+    let extentNow = reachTarget.current;
+    /** 0..1, eased: how far the line has stirred under the pointer. */
+    let lift = 0;
 
     const draw = (now: number) => {
       const dpr = window.devicePixelRatio || 1;
@@ -124,14 +147,17 @@ export function Spiral({ thinking, stage = 'awake', tone, weight = 1 / 40, label
       const dt = Math.min(0.05, (now - last) / 1000);
       last = now;
 
-      // Woken without unfolding first (a resumed onboarding): the line is simply there, and coils.
       if (current.current === 'awake') born.current ??= now;
-      if (current.current === 'drawing' && unfolded.current === null) unfolded.current = now;
-
-      const raw = unfolded.current === null ? 0 : still ? 1 : Math.min(1, (now - unfolded.current) / UNFOLD_MS);
-      const unfold = raw < 0.5 ? 4 * raw ** 3 : 1 - (-2 * raw + 2) ** 3 / 2;
+      const asleep = current.current === 'asleep';
+      const goal = reachTarget.current;
+      extentNow = still ? goal : extentNow + (goal - extentNow) * 0.06;
+      lift = still ? 0 : lift + ((asleep && hoverRef.current ? 1 : 0) - lift) * 0.08;
+      const since = breathed.current === null ? Infinity : (now - breathed.current) / BREATH_MS;
+      const inhale = still || since >= 1 ? 0 : Math.sin(Math.PI * since);
       const coil = born.current === null ? 0 : still ? 1 : 1 - (1 - Math.min(1, (now - born.current) / GROW_MS)) ** 3;
       hush += ((ear.current ? 1 : 0) - hush) * 0.08;
+      typed = still ? (typingRef.current ? 1 : 0) : typed + ((typingRef.current ? 1 : 0) - typed) * 0.1;
+      swell.current = still ? 0 : swell.current * Math.exp(-dt * 6);
       // Opens with her voice and settles slowly, like the glow.
       const level = voiceLevel.current;
       open += (level - open) * (level > open ? 0.3 : 0.05);
@@ -152,33 +178,23 @@ export function Spiral({ thinking, stage = 'awake', tone, weight = 1 / 40, label
       const [sinT, cosT] = [Math.sin(TILT), Math.cos(TILT)];
       // The wave runs along the box's width; its height stays scaled to the
       // short side. On a square (the first meeting) the two are the same.
-      const halfW = width * 0.4;
+      const halfW = width * 0.4 * (1 - 0.5 * typed);
       const halfH = size * 0.4;
-      const track = 2 * halfW;
 
-      // How much of the line exists yet: none, growing out from the middle, or all of it.
-      const extent = current.current === 'asleep' ? 0 : current.current === 'awake' ? 1 : unfold;
+      // How much of the line exists yet, growing out from the middle.
+      const extent = extentNow;
+      // Still flat, the line's ends soften into the panel rather than stopping
+      // at a cap; as it coils they fill in, the coil's own taper taking over.
+      const reachPx = halfW * extent;
+      const ends = ctx.createLinearGradient(mid - reachPx, 0, mid + reachPx, 0);
+      const soft = 1 - coil;
+      ends.addColorStop(0, soft > 0.5 ? clear.current : stroke.current);
+      ends.addColorStop(0.18 * soft, stroke.current);
+      ends.addColorStop(1 - 0.18 * soft, stroke.current);
+      ends.addColorStop(1, soft > 0.5 ? clear.current : stroke.current);
+      ctx.strokeStyle = soft > 0 && reachPx > 1 ? ends : stroke.current;
 
-      // The word. It stretches left and right while flattening, and the line
-      // comes up through it; by the time it has faded the line holds its shape.
-      if (word.current && current.current !== 'awake') {
-        ctx.font = `${FONT_PX}px ${ink.current}`;
-        const width = Math.max(1, ctx.measureText(word.current).width);
-        const stretchTo = Math.max(1, track / width);
-        const appear = still ? 1 : Math.min(1, (now - (shown.current ?? now)) / 1200);
-        ctx.save();
-        ctx.globalAlpha = appear * (1 - smoothstep(0.55, 1, unfold));
-        ctx.fillStyle = stroke.current;
-        ctx.translate(mid, size / 2 + (still ? 0 : (1 - appear) * 8));
-        ctx.scale(1 + (stretchTo - 1) * unfold, 1 - 0.92 * unfold);
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText(word.current, 0, 0);
-        ctx.restore();
-      }
-
-      if (extent > 0) {
-        ctx.globalAlpha = current.current === 'awake' ? 1 : smoothstep(0.25, 1, unfold);
+      if (extent > 0.002) {
         for (let s = 0; s < STRANDS; s++) {
           const offset = (s / STRANDS) * Math.PI * 2 * (0.08 + open * 0.5);
           ctx.beginPath();
@@ -189,19 +205,25 @@ export function Spiral({ thinking, stage = 'awake', tone, weight = 1 / 40, label
             const u = i / POINTS;
             const x = u * 2 - 1;
             // Tapered at both ends, fullest in the middle.
-            const r = coil * (0.22 - 0.1 * hush + open * (0.2 + 0.1 * hush)) * quiet * breath * Math.sin(Math.PI * u) ** 0.7;
+            const taper = Math.sin(Math.PI * u) ** 0.7;
+            const voiced = coil * (0.22 - 0.1 * hush + open * (0.2 + 0.1 * hush)) * quiet * breath * taper;
+            // Flat, the line only stirs under the pointer; flat or coiled, it swells in its one breath.
+            const stir = taper * ((1 - coil) * 0.035 * lift + 0.13 * inhale);
+            const r = voiced + (coil * (0.05 + 0.14 * swell.current) * taper - voiced) * typed + stir;
             const a = u * TURNS * Math.PI * 2 + phase + offset;
             const py = Math.sin(a) * r * cosT - Math.cos(a) * r * sinT;
             if (i === from) ctx.moveTo(mid + x * halfW, size / 2 + py * halfH);
             else ctx.lineTo(mid + x * halfW, size / 2 + py * halfH);
           }
-          ctx.globalAlpha = (current.current === 'awake' ? 1 : smoothstep(0.25, 1, unfold)) * (s === 0 ? 1 : (0.55 - s * 0.12) * coil);
-          ctx.lineWidth = Math.max(1, size * weight) * (s === 0 ? 1.15 : 0.8);
+          // Typing, the coil is one strand: the others fade out under it.
+          ctx.globalAlpha = s === 0 ? 1 : (0.55 - s * 0.12) * coil * (1 - typed);
+          const full = Math.max(1, size * weight) * (s === 0 ? 1.15 : 0.8);
+          ctx.lineWidth = full + (1.5 - full) * typed;
           ctx.stroke();
         }
       }
 
-      return !still || coil < 1 || current.current === 'drawing' || ear.current;
+      return !still || coil < 1 || ear.current || typingRef.current !== (typed === 1);
     };
     const loop = frames(draw);
     wake.current = loop.wake;
@@ -209,4 +231,18 @@ export function Spiral({ thinking, stage = 'awake', tone, weight = 1 / 40, label
   }, [weight]);
 
   return <canvas ref={canvas} aria-hidden="true" className={cn('spiral-glow flex-none', className)} />;
+}
+
+/** The same colour at no opacity, so a gradient to it fades rather than greys. */
+function transparentOf(el: HTMLCanvasElement, color: string): string {
+  const ctx = el.getContext('2d');
+  if (!ctx) return 'rgba(0,0,0,0)';
+  ctx.fillStyle = color;
+  const resolved = String(ctx.fillStyle);
+  const hex = /^#([0-9a-f]{6})$/i.exec(resolved);
+  if (hex) {
+    const n = parseInt(hex[1]!, 16);
+    return `rgba(${n >> 16},${(n >> 8) & 255},${n & 255},0)`;
+  }
+  return resolved.replace(/rgba?\(([^,]+),([^,]+),([^,)]+)(?:,[^)]*)?\)/, 'rgba($1,$2,$3,0)');
 }

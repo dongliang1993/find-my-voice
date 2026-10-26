@@ -68,7 +68,7 @@ export function App() {
       <>
         <Stage messages={chat.messages} status={chat.status} name={name} playing={playing}
           lines={chat.lines} canListen={Boolean(status.listen.ready)} arrived={arrived}
-          letters={chat.letters} edits={chat.edits} note={chat.note} noteEdits={chat.noteEdits}
+          papers={chat.papers} stage={chat.stage} edits={chat.edits} saved={chat.saved}
           appStatus={status} settingsStamp={chat.settingsStamp}
           onSend={chat.send} onInterrupt={chat.interrupt}
           needsSetup={needsSetup}

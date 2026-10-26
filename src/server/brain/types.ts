@@ -1,4 +1,4 @@
-import type { InitiativeSettings, LetterBlock, Note, ReplyLanguage } from '../../shared/protocol.js';
+import type { InitiativeSettings, PaperBlock, ReplyLanguage } from '../../shared/protocol.js';
 
 /** The preferences she may change herself, because the user asked her to. */
 export type PreferencesPatch = { language?: ReplyLanguage; initiative?: InitiativeSettings['mode'] };
@@ -7,47 +7,31 @@ export type PreferencesPatch = { language?: ReplyLanguage; initiative?: Initiati
 export type BrainEvent =
   | { type: 'text_delta'; text: string }
   | { type: 'voice'; text: string; emotion: string | null }
-  /** She has started writing a letter: the envelope can appear before a word of it is in. */
-  | { type: 'letter_start'; letterId: string }
-  /** What she has written so far. The last block may be cut short; it is the same letter, growing. */
-  | { type: 'letter_progress'; letterId: string; title: string; blocks: LetterBlock[] }
+  /** She has started writing a paper: it can go up on the stage before a word of it is in. */
+  | { type: 'paper_start'; paperId: string }
+  /** What she has written so far. The last block may be cut short; it is the same paper, growing. */
+  | { type: 'paper_progress'; paperId: string; title: string; blocks: PaperBlock[] }
   /** All of it, checked: blocks that were not valid are already gone. Empty means it came to nothing. */
-  | { type: 'letter_done'; letterId: string; title: string; blocks: LetterBlock[] }
+  | { type: 'paper_done'; paperId: string; title: string; blocks: PaperBlock[] }
   /**
-   * She wants to change a letter. The ops are as she wrote them; the chat layer
-   * checks and applies them and must call `respond` with what happened — that
-   * is the tool's answer, and her turn waits for it.
+   * She wants to change a paper — the one named, or else the one in front of
+   * the user. The ops are as she wrote them; the chat layer checks and applies
+   * them and must call `respond` with what happened: that is the tool's
+   * answer, and her turn waits for it.
    */
-  | { type: 'letter_edit'; letterId: string; ops: unknown; respond: (result: string) => void }
-  /** She has started a note: the card can come up before a word of it is in. */
-  | { type: 'note_start'; noteId: string }
-  /**
-   * What the note says so far, growing the same way a letter does. `fresh`: a
-   * new topic — what was on the table is wiped, not written under.
-   */
-  | { type: 'note_progress'; noteId: string; title: string; blocks: LetterBlock[]; fresh: boolean }
-  /** The note as written. Empty blocks means it came to nothing and never happened. */
-  | { type: 'note_done'; noteId: string; title: string; blocks: LetterBlock[]; fresh: boolean }
-  /** The user asked her to keep the note: it goes into the inbox, signed. */
-  | { type: 'note_keep'; respond: (result: string) => void }
+  | { type: 'paper_edit'; paperId?: string; ops: unknown; respond: (result: string) => void }
+  /** The user asked her to keep the paper in front of them: it goes onto the Papers list. */
+  | { type: 'paper_save'; respond: (result: string) => void }
   /** The user asked, out loud, for a preference to change. Applied by the app; the answer is the tool's. */
   | { type: 'preferences'; patch: PreferencesPatch; respond: (result: string) => void }
-  /** She wants to change the note; the chat layer applies and answers, as with a letter. No id: there is only ever one. */
-  | { type: 'note_edit'; ops: unknown; respond: (result: string) => void }
   | { type: 'error'; code: string; message: string }
   /** The session to resume no longer exists; nothing was said this turn. */
   | { type: 'session_lost' };
-
-/** What the brain needs to know about the note already on the table, if any. */
-export type BrainNote = Pick<Note, 'id' | 'title' | 'blocks'>;
 
 export type BrainSink = (event: BrainEvent) => void;
 
 /** `fresh` starts a new session instead of resuming the stored one. */
 export type BrainFactory = (options: { fresh: boolean }) => Brain;
-/** What the brain may need to know each time it is built; notes read it to append instead of replacing. */
-export type BrainContext = { note: BrainNote | null };
-
 export interface Brain {
   /** Runs one reply turn. Resolves when the companion has finished replying. */
   reply(text: string, sink: BrainSink): Promise<void>;

@@ -1,12 +1,11 @@
 import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
-import { Hono } from 'hono';
+import { Hono, type Context } from 'hono';
 import { serveStatic } from '@hono/node-server/serve-static';
 import { createNodeWebSocket } from '@hono/node-ws';
 import { z } from 'zod';
-import type { ServerEvent } from '../shared/protocol.js';
-import { linkUrl } from '../shared/links.js';
+import type { Paper, ServerEvent } from '../shared/protocol.js';
 import { openExternal } from './open.js';
 import { DEFAULT_IDENTITY, readProfileDocument, writeProfileDocument } from './profile/profile.js';
 import { clientEventSchema } from './chat/client-events.js';
@@ -152,22 +151,41 @@ export function createHttp(app: App, webRoot: string) {
     return audioId ? c.json({ audioId }) : c.json({ code: 'NOT_SPEAKABLE', message: '这句没法读出来' }, 409);
   });
 
-  // ---- letters ----
-  const noLetter = { code: 'NOT_FOUND', message: '这封信不在了' };
-  http.post('/api/letters/:id/open', c => {
-    const letter = app.chat.openLetter(c.req.param('id'));
-    return letter ? c.json(letter) : c.json(noLetter, 404);
+  // A new conversation on purpose: what was said goes, papers stay.
+  http.post('/api/chat/restart', async c => {
+    await app.chat.restart();
+    return c.json({ ok: true });
   });
-  http.delete('/api/letters/:id', c => (app.chat.deleteLetter(c.req.param('id')) ? c.body(null, 204) : c.json(noLetter, 404)));
-  http.post('/api/letters/:id/rewrite', c => (app.chat.rewriteLetter(c.req.param('id'))
-    ? c.body(null, 202)
-    : c.json({ code: 'NOT_BROKEN', message: '这封信不需要重写' }, 409)));
-  // The URL is built here from what the letter stores — never taken from the
-  // request — so a page can only ever open the search a letter already names.
-  http.post('/api/letters/:id/blocks/:blockId/open', c => {
-    const block = app.store.letter(c.req.param('id'))?.blocks.find(b => b.id === c.req.param('blockId'));
-    if (block?.type !== 'item' || !block.link) return c.json({ code: 'NOT_FOUND', message: '这一条没有可以打开的链接' }, 404);
-    const url = linkUrl(block.link);
+
+  // ---- papers ----
+  const noPaper = { code: 'NOT_FOUND', message: '这一份不在了' };
+  const answer = (c: Context, found: Paper | null) => (found ? c.json(found) : c.json(noPaper, 404));
+  // Kept on the Papers list; it stays where it is.
+  http.post('/api/papers/:id/save', c => answer(c, app.chat.savePaper(c.req.param('id'))));
+  // A card in the history clicked: back on the stage.
+  http.post('/api/papers/:id/stage', c => answer(c, app.chat.putOnStage(c.req.param('id'))));
+  // Closed on the page: off the stage, nothing else.
+  http.delete('/api/stage', c => { app.chat.closeStage(); return c.body(null, 204); });
+  http.delete('/api/papers/:id', c => (app.chat.deletePaper(c.req.param('id')) ? c.body(null, 204) : c.json(noPaper, 404)));
+  // The user's own hand on a block: a tick if that is what came, otherwise the block's own words.
+  http.patch('/api/papers/:id/blocks/:blockId', async c => {
+    const body = await c.req.json().catch(() => null) as { text?: unknown; done?: unknown } | null;
+    const id = c.req.param('id');
+    const blockId = c.req.param('blockId');
+    return answer(c, typeof body?.done === 'boolean'
+      ? app.chat.tickCheck(id, blockId, body.done)
+      : app.chat.patchBlock(id, blockId, typeof body?.text === 'string' ? body.text : ''));
+  });
+  // The whole paper in one piece, typed freehand: read back into blocks, saved at once.
+  http.put('/api/papers/:id/text', async c => {
+    const body = await c.req.json().catch(() => null) as { text?: unknown } | null;
+    return answer(c, app.chat.rewriteText(c.req.param('id'), typeof body?.text === 'string' ? body.text : ''));
+  });
+  // The URL is built here from what the paper stores — never taken from the
+  // request — so a page can only ever open the search a paper already names.
+  http.post('/api/papers/:id/blocks/:blockId/open', c => {
+    const url = app.chat.paperLink(c.req.param('id'), c.req.param('blockId'));
+    if (!url) return c.json({ code: 'NOT_FOUND', message: '这一条没有可以打开的链接' }, 404);
     // The desktop app and a browser on this machine both land in the system browser this way.
     openExternal(url);
     return c.json({ url });
@@ -200,32 +218,6 @@ export function createHttp(app: App, webRoot: string) {
     return c.body(null, 204);
   });
 
-  // ---- notes ----
-
-  // Closed on the page: nothing is kept, nothing is asked.
-  http.delete('/api/note', c => (app.chat.closeNote() ? c.body(null, 204) : c.body(null, 204)));
-  // Kept: signed, it is a letter in the inbox from here.
-  http.post('/api/note/file', c => {
-    const letter = app.chat.fileNote();
-    return letter ? c.json(letter) : c.json({ code: 'NOT_FOUND', message: '桌上没有便签' }, 404);
-  });
-  // The user's own hand on a block: no ops, no playthrough.
-  http.patch('/api/note/blocks/:blockId', async c => {
-    const body = await c.req.json().catch(() => null) as { text?: unknown; done?: unknown } | null;
-    const id = c.req.param('blockId');
-    // A tick in a check box, if that is what came; otherwise the block's own words.
-    const note = typeof body?.done === 'boolean'
-      ? app.chat.tickNoteCheck(id, body.done)
-      : app.chat.patchNoteBlock(id, typeof body?.text === 'string' ? body.text : '');
-    return note ? c.json(note) : c.json({ code: 'NOT_FOUND', message: '桌上没有便签' }, 404);
-  });
-  // The whole card in one piece, typed freehand: read back into blocks, saved at once.
-  http.put('/api/note/text', async c => {
-    const body = await c.req.json().catch(() => null) as { text?: unknown } | null;
-    const note = app.chat.rewriteNoteText(typeof body?.text === 'string' ? body.text : '');
-    return note ? c.json(note) : c.json({ code: 'NOT_FOUND', message: '桌上没有便签' }, 404);
-  });
-
   http.get('/api/ws', upgradeWebSocket(c => {
     const origin = c.req.header('origin');
     const host = c.req.header('host');
@@ -254,7 +246,7 @@ export function createHttp(app: App, webRoot: string) {
           // Opening the app is when an opening is worth most; the gate still decides whether there is one.
           if (message.visible && !seen) void app.initiative.tick();
         }
-        else if (message.type === 'reading') app.chat.setReading(message.letterId);
+        else if (message.type === 'reading') app.chat.setReading(message.paperId);
         else void app.chat.interrupt();
       },
       onClose() { unsubscribe(); app.presence.delete(viewer); },

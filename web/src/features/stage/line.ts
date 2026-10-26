@@ -24,8 +24,8 @@ export function latestLine(messages: ChatMessage[], playingId: string | null): L
   }
   for (let i = messages.length - 1; i >= 0; i--) {
     const m = messages[i]!;
-    // A letter is handed over, not said: its line in the history is not hers to speak.
-    if (m.role === 'assistant' && m.kind !== 'letter' && plainText(m.text).trim()) return { id: m.id, text: plainText(m.text), audioId: m.audio?.id ?? null };
+    // A paper is handed over, not said: its line in the history is not hers to speak.
+    if (m.role === 'assistant' && m.kind !== 'paper' && plainText(m.text).trim()) return { id: m.id, text: plainText(m.text), audioId: m.audio?.id ?? null };
     if (m.role === 'user') return null;
   }
   return null;
@@ -44,7 +44,7 @@ export function lastTake(messages: ChatMessage[]): Take | null {
   for (let i = messages.length - 1; i >= 0; i--) {
     const m = messages[i]!;
     if (m.role === 'user') break;
-    if (m.role !== 'assistant' || m.kind === 'letter') continue;
+    if (m.role !== 'assistant' || m.kind === 'paper') continue;
     if (m.audio && m.audio.state !== 'failed') return { messageId: m.id, audioId: m.audio.id };
     if (!typed && plainText(m.text).trim()) typed = m;
   }

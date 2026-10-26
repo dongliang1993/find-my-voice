@@ -1,9 +1,9 @@
 import { useEffect, useLayoutEffect, useRef } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import type { ChatMessage, CompanionStatus, InitiativeKind, Letter } from '@shared/protocol';
+import type { ChatMessage, CompanionStatus, InitiativeKind, Paper } from '@shared/protocol';
 import { Avatar } from '@/components/Identity';
 import { VoiceBubble } from '@/components/VoiceBubble';
-import { LetterCard } from '@/features/letter/Inbox';
+import { PaperChip } from '@/features/paper/Papers';
 import { plainText } from '@shared/plain';
 import { cn } from '@/lib/utils';
 
@@ -27,12 +27,12 @@ const dayLabel = (iso: string) => {
 
 type Props = {
   messages: ChatMessage[]; status: CompanionStatus; name: string;
-  /** Her letters, for the envelopes in the thread; opening one shows the whole letter. */
-  letters?: Letter[];
-  onOpenLetter?: (letter: Letter) => void;
+  /** Her papers, for their cards in the thread; clicking one puts it back on the stage. */
+  papers?: Paper[];
+  onOpenPaper?: (paper: Paper) => void;
 };
 
-export function MessageList({ messages, status, name, letters = [], onOpenLetter }: Props) {
+export function MessageList({ messages, status, name, papers = [], onOpenPaper }: Props) {
   const scroller = useRef<HTMLDivElement>(null);
   const stuck = useRef(true);
 
@@ -96,8 +96,8 @@ export function MessageList({ messages, status, name, letters = [], onOpenLetter
                       )}
                     </p>
                   )}
-                  {message.kind === 'letter' ? (
-                    <LetterCard letter={letters.find(l => l.id === message.letterId)} summary={message.text} onOpen={letter => onOpenLetter?.(letter)} />
+                  {message.kind === 'paper' ? (
+                    <PaperChip paper={papers.find(p => p.id === message.paperId)} summary={message.text} onOpen={paper => onOpenPaper?.(paper)} />
                   ) : message.kind === 'voice' ? <VoiceBubble message={message} /> : (
                     <p className={cn(
                       'wrap-anywhere whitespace-pre-wrap',

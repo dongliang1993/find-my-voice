@@ -104,6 +104,15 @@ test('drops the per-provider language keys that moved onto the companion', () =>
   assert.equal('language' in stored.voice.volcengine!, false);
 });
 
+test('the ui language patch holds and is masked through', () => {
+  const dir = tempDir();
+  updateSettings(dir, { ui: { language: 'zh' } });
+  const next = updateSettings(dir, { companion: { name: '阿月' } });
+  assert.equal(next.ui.language, 'zh');
+  assert.equal(maskSettings(next).ui.language, 'zh');
+  assert.throws(() => settingsPatchSchema.parse({ ui: { language: 'fr' } }));
+});
+
 test('the browser patch schema applies no defaults, so a partial save resets nothing', () => {
   const dir = tempDir();
   updateSettings(dir, { voice: { provider: 'fish', volcengine: { apiKey: 'volc' } }, brain: { model: 'm1' } });

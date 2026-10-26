@@ -1,4 +1,4 @@
-import type { AppStatus, Comfort, HeardAlias, Letter, Note, PublicSettings, Rhythm, SettingsUpdate } from '@shared/protocol';
+import type { AppStatus, Comfort, HeardAlias, Paper, PublicSettings, Rhythm, SettingsUpdate } from '@shared/protocol';
 
 export type { AppStatus };
 
@@ -41,31 +41,31 @@ export const api = {
   audioUrl: (id: string) => `/api/audio/${id}`,
   /** Has her say a line she only typed; its voice arrives on the socket. */
   voiceMessage: (id: string) => request<{ audioId: string }>(`/api/messages/${id}/voice`, { method: 'POST' }),
-  /** Marks a letter read; the server tells every page. */
-  openLetter: (id: string) => request<Letter>(`/api/letters/${id}/open`, { method: 'POST' }),
-  deleteLetter: (id: string) => fetch(`/api/letters/${id}`, { method: 'DELETE' }).then(r => { if (!r.ok) throw new Error('删不掉这封信'); }),
-  /** A letter that broke off, written again. */
-  rewriteLetter: (id: string) => fetch(`/api/letters/${id}/rewrite`, { method: 'POST' }).then(r => r.ok),
-  /** The note on the table, closed: it is gone, nothing kept. */
-  closeNote: () => fetch('/api/note', { method: 'DELETE' }).then(r => { if (!r.ok) throw new Error('收不走这张便签'); }),
-  /** The note kept: signed, it is a letter in the inbox. */
-  fileNote: () => request<Letter>('/api/note/file', { method: 'POST' }),
+  /** Onto the Papers list; it stays where it is. */
+  savePaper: (id: string) => request<Paper>(`/api/papers/${id}/save`, { method: 'POST' }),
+  /** Back on the stage, from its card in the history. */
+  stagePaper: (id: string) => request<Paper>(`/api/papers/${id}/stage`, { method: 'POST' }),
+  /** Off the stage; nothing else changes. */
+  closeStage: () => fetch('/api/stage', { method: 'DELETE' }).then(r => { if (!r.ok) throw new Error('收不走'); }),
+  deletePaper: (id: string) => fetch(`/api/papers/${id}`, { method: 'DELETE' }).then(r => { if (!r.ok) throw new Error('删不掉'); }),
   /** IDENTITY.md or MEMORY.md, opened in the system's editor. */
   identity: () => request<{ content: string; sha256: string | null }>('/api/profile/identity'),
   saveIdentity: (content: string, baseSha256: string | null) =>
     request<{ content: string; sha256: string | null }>('/api/profile/identity', { method: 'PUT', body: JSON.stringify({ content, baseSha256 }) }),
   openProfile: (name: 'identity' | 'memory') => request<void>(`/api/profile/${name}/open`, { method: 'POST' }),
-  /** The user's own hand on one block of the note: its words, or a tick in its check box. */
-  patchNoteBlock: (blockId: string, change: { text: string } | { done: boolean }) =>
-    request<Note>(`/api/note/blocks/${blockId}`, { method: 'PATCH', body: JSON.stringify(change) }),
-  /** The whole card typed freehand in one piece: read back into blocks, saved at once. */
-  rewriteNoteText: (text: string) =>
-    request<Note>('/api/note/text', { method: 'PUT', body: JSON.stringify({ text }) }),
+  /** The user's own hand on one block: its words, or a tick in its check box. */
+  patchBlock: (paperId: string, blockId: string, change: { text: string } | { done: boolean }) =>
+    request<Paper>(`/api/papers/${paperId}/blocks/${blockId}`, { method: 'PATCH', body: JSON.stringify(change) }),
+  /** The whole paper typed freehand in one piece: read back into blocks, saved at once. */
+  rewriteText: (paperId: string, text: string) =>
+    request<Paper>(`/api/papers/${paperId}/text`, { method: 'PUT', body: JSON.stringify({ text }) }),
   /** Opens an item's search in the system browser; the URL comes back for when that cannot happen here. */
-  openLetterLink: (letterId: string, blockId: string) =>
-    request<{ url: string }>(`/api/letters/${letterId}/blocks/${blockId}/open`, { method: 'POST' }),
+  openLink: (paperId: string, blockId: string) =>
+    request<{ url: string }>(`/api/papers/${paperId}/blocks/${blockId}/open`, { method: 'POST' }),
   /** The live conversation socket. */
   wsUrl: () => `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/api/ws`,
+  /** A new conversation on purpose: what was said goes, papers stay. */
+  restartChat: () => request<{ ok: true }>('/api/chat/restart', { method: 'POST' }),
 };
 
 export type OnboardingState = { step: number; draft: Record<string, unknown>; completedAt: string | null };

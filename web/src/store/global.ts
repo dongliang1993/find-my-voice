@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { api, type AppStatus, type OnboardingState } from '@/lib/api';
+import { useLocale } from '@/lib/locale';
 
 type Global = {
   /** The page's first fetch has landed; the console may be shown. */
@@ -30,8 +31,12 @@ export const useGlobal = create<Global>()(set => ({
   status: null,
   onboarding: null,
   checkReady: () => {
-    inflight ??= Promise.all([readStatus(), api.onboarding().catch(() => null)])
-      .then(([status, onboarding]) => set({ status, onboarding, ready: true }))
+    inflight ??= Promise.all([readStatus(), api.onboarding().catch(() => null), api.settings().catch(() => null)])
+      .then(([status, onboarding, settings]) => {
+        // The 外观 page may never be opened; the words still start where they were left.
+        if (settings) useLocale.getState().setLanguage(settings.ui.language);
+        set({ status, onboarding, ready: true });
+      })
       .finally(() => { inflight = null; });
     return inflight;
   },

@@ -22,6 +22,8 @@ export type ElevenConfig = {
   stability: number;
   /** 0..1. How tightly the output tracks the stored voice. */
   similarity: number;
+  /** Speaker boost costs latency for closeness; off is the flash-model setting. */
+  speakerBoost: boolean;
   timeoutMs: number;
 };
 
@@ -65,7 +67,7 @@ export class ElevenLabsProvider implements TtsProvider {
             stability: this.config.stability,
             similarity_boost: this.config.similarity,
             speed: speedFor(input.speechRate),
-            use_speaker_boost: true,
+            use_speaker_boost: this.config.speakerBoost,
           },
         }),
       });

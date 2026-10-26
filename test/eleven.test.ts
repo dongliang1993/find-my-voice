@@ -4,7 +4,7 @@ import { ElevenLabsProvider } from '../src/server/voice/eleven.js';
 import { DomainError } from '../src/server/errors.js';
 
 const voice = { id: 'voice-abc', resourceId: '' };
-const config = { apiKey: 'eleven-key', model: 'eleven_v4' as const, stability: 0.5, similarity: 0.8, timeoutMs: 5000 };
+const config = { apiKey: 'eleven-key', model: 'eleven_v4' as const, stability: 0.5, similarity: 0.8, speakerBoost: true, timeoutMs: 5000 };
 
 /** A fetch that returns the given byte pieces as a stream, recording the request. */
 function fakeFetch(pieces: Buffer[], init: { status?: number } = {}) {
@@ -39,6 +39,13 @@ test('sends voice settings built from the stored knobs', async () => {
   assert.equal(body.voice_settings.stability, 0.5);
   assert.equal(body.voice_settings.similarity_boost, 0.8);
   assert.equal(body.voice_settings.use_speaker_boost, true);
+});
+
+test('speaker boost off reaches the request, not just the settings', async () => {
+  const { impl, calls } = fakeFetch([Buffer.alloc(96)]);
+  await new ElevenLabsProvider({ ...config, speakerBoost: false }, impl).synthesize({ text: 'x', voice, speechRate: 0 }, { format: 'pcm' });
+  const body = JSON.parse(calls[0]!.init.body as string) as { voice_settings: { use_speaker_boost: boolean } };
+  assert.equal(body.voice_settings.use_speaker_boost, false);
 });
 
 test('clamps speech rate into the narrow speed range ElevenLabs accepts', async () => {

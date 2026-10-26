@@ -31,6 +31,11 @@ const elevenSchema = z.object({
   model: z.enum(ELEVEN_MODELS).default('eleven_v4'),
   stability: z.number().min(0).max(1).default(0.5),
   similarity: z.number().min(0).max(1).default(0.8),
+  /**
+   * Speaker boost tracks the stored voice closer, at a measured latency cost —
+   * the one knob worth turning off when a flash model is chasing milliseconds.
+   */
+  speakerBoost: z.boolean().default(true),
 }).strict();
 
 export const settingsSchema = z.object({
@@ -52,6 +57,15 @@ export const settingsSchema = z.object({
      * TTS language hint, so the two can never disagree.
      */
     language: z.enum(['auto', 'zh', 'en']).default('auto'),
+    /**
+     * Voice-first: she answers out loud unless something is better read than
+     * heard. Off, she types and only speaks when the words want a voice.
+     */
+    voiceFirst: z.boolean().default(false),
+  }).strict().prefault({}),
+  // The app's own words. English until said otherwise; `auto` follows the system.
+  ui: z.object({
+    language: z.enum(['auto', 'zh', 'en']).default('en'),
   }).strict().prefault({}),
   // Empty values mean "inherit from Claude Code or the environment".
   brain: z.object({
@@ -105,8 +119,9 @@ export const settingsPatchSchema: z.ZodType<SettingsPatch> = z.object({
   companion: z.object({
     name: z.string().trim().min(1).max(40), userName: z.string().trim().max(40),
     comfort: z.enum(['listen', 'advise', 'cheer', 'depends']), rhythm: z.enum(['morning', 'commute', 'night', 'anytime']),
-    language: z.enum(['auto', 'zh', 'en']),
+    language: z.enum(['auto', 'zh', 'en']), voiceFirst: z.boolean(),
   }).partial().strict().optional(),
+  ui: z.object({ language: z.enum(['auto', 'zh', 'en']) }).partial().strict().optional(),
   brain: z.object({ baseUrl: z.string(), apiKey: z.string(), model: z.string() }).partial().strict().optional(),
   initiative: z.object({
     mode: z.enum(['off', 'occasional', 'often']), notify: z.boolean(),
@@ -120,7 +135,7 @@ export const settingsPatchSchema: z.ZodType<SettingsPatch> = z.object({
     fish: z.object({ apiKey: z.string(), referenceId: z.string(), model: z.enum(FISH_MODELS) }).partial().strict(),
     elevenlabs: z.object({
       apiKey: z.string(), voiceId: z.string(), model: z.enum(ELEVEN_MODELS),
-      stability: z.number().min(0).max(1), similarity: z.number().min(0).max(1),
+      stability: z.number().min(0).max(1), similarity: z.number().min(0).max(1), speakerBoost: z.boolean(),
     }).partial().strict(),
   }).partial().strict().optional(),
 }).strict();
@@ -323,6 +338,7 @@ export function maskSettings(settings: Settings): PublicSettings {
   } = settings.voice;
   return {
     companion: settings.companion,
+    ui: settings.ui,
     initiative: resolveInitiative(settings.initiative, settings.companion.rhythm),
     brain: { ...brain, hasApiKey: Boolean(brainKey) },
     voice: {

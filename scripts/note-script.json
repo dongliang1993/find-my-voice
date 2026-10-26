@@ -2,7 +2,7 @@
   [
     { "wait": 600 },
     { "say": "你说要收拾出门的东西，我列一张放在你手边。" },
-    { "note": {
+    { "paper": {
         "title": "出门前",
         "blocks": [
           { "type": "paragraph", "text": "雨还在下，慢慢来。" },
@@ -16,18 +16,15 @@
   [
     { "wait": 400 },
     { "say": "对了，还要带出门那件外套。" },
-    { "note": {
-        "title": "再带一件",
-        "blocks": [
-          { "type": "item", "name": "外套", "note": "玄关椅子上那件" }
-        ]
-      }, "ms": 2500 }
+    { "edit": { "ops": [
+        { "op": "insert", "afterBlockId": "b5", "block": { "type": "item", "name": "外套", "note": "玄关椅子上那件" } }
+      ] } }
   ],
   [
     { "wait": 400 },
     { "say": "外套不用了，今天没那么冷，划掉。" },
-    { "note_edit": { "ops": [
-        { "op": "delete", "blockId": "b5" }
+    { "edit": { "ops": [
+        { "op": "delete", "blockId": "b6" }
       ] } }
   ]
 ]

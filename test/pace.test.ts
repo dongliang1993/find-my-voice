@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { advance, backlog, caughtUp, chunkLength, letterSegments, PACE, shownChunks, speedFor, startPen, type Segment } from '../web/src/features/letter/pace.js';
+import { advance, backlog, caughtUp, chunkLength, paperSegments, PACE, shownChunks, speedFor, startPen, type Segment } from '../web/src/features/paper/pace.js';
 
 /** Always the middle of every range. */
 const mid = () => 0.5;
@@ -89,7 +89,7 @@ test('each chunk keeps its start, so the newest can fade in on its own', () => {
 });
 
 test('a letter is written title first, then each block, an item as its name then its note', () => {
-  const segments = letterSegments({
+  const segments = paperSegments({
     title: '下雨天',
     blocks: [
       { id: 'b1', type: 'heading', text: '电影' },

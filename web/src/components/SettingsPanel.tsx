@@ -9,12 +9,13 @@ import { Field } from '@/components/settings/Field';
 import { choice } from '@/components/settings/choice';
 import { usePending } from '@/components/settings/usePending';
 import { ReplyLanguagePicker } from '@/components/settings/ReplyLanguagePicker';
+import { UiLanguagePicker } from '@/components/settings/UiLanguagePicker';
 import { draftFrom, patchFrom, voiceUsable, VoiceSettings, type VoiceDraft, type When } from '@/components/settings/VoiceSettings';
 import { initiativeDraftFrom, InitiativeSettingsSection, type InitiativeDraft } from '@/components/settings/InitiativeSettings';
 import { useGlobal } from '@/store/global';
 import { AppSheet, type Frame, type Presence } from '@/features/dock/AppSheet';
 import { PANEL } from '@/features/dock/appSwitch';
-import { useSay, useUi, useWords, type Said } from '@/lib/locale';
+import { useSay, useUi, useWords, useLocale, type Said } from '@/lib/locale';
 import { cn } from '@/lib/utils';
 import { useScrollFade } from '@/hooks/useScrollFade';
 
@@ -44,7 +45,7 @@ const SOURCE_LABEL: Record<BrainSource, Said> = {
 const PAUSE_MS = 600;
 const SAVED_MS = 2000;
 
-type Page = 'brain' | 'voice' | 'her';
+type Page = 'appearance' | 'brain' | 'voice' | 'her';
 type Brain = { preset: Preset; baseUrl: string; apiKey: string; model: string };
 type Identity = { content: string; sha256: string | null };
 
@@ -60,6 +61,7 @@ export function SettingsPanel({ status, stamp, frame, presence, onClose }: Props
   const word = useWords();
   const ui = useUi();
   const say = useSay();
+  const setLocale = useLocale(store => store.setLanguage);
   const refreshStatus = useGlobal(store => store.refreshStatus);
   const [page, setPage] = useState<Page>(status.brain.ready ? (status.voice.ready ? 'her' : 'voice') : 'brain');
   const [settings, setSettings] = useState<PublicSettings | null>(null);
@@ -67,6 +69,8 @@ export function SettingsPanel({ status, stamp, frame, presence, onClose }: Props
   const [voice, setVoice] = useState<VoiceDraft>(() => draftFrom(null));
   const [name, setName] = useState(status.companionName);
   const [language, setLanguage] = useState<ReplyLanguage>('auto');
+  const [voiceFirst, setVoiceFirst] = useState(false);
+  const [uiLanguage, setUiLanguage] = useState<'auto' | 'zh' | 'en'>('auto');
   const [initiative, setInitiative] = useState<InitiativeDraft>(() => initiativeDraftFrom(undefined));
   const [identity, setIdentity] = useState<Identity | null>(null);
   /** The sha the next identity save is made against; a ref, so back-to-back saves chain. */
@@ -83,6 +87,8 @@ export function SettingsPanel({ status, stamp, frame, presence, onClose }: Props
         setSettings(s);
         setName(s.companion.name);
         setLanguage(s.companion.language);
+        setVoiceFirst(s.companion.voiceFirst);
+        setUiLanguage(s.ui.language);
         setInitiative(initiativeDraftFrom(s.initiative));
         // She only ever changes language and initiative; the pages with keys half-typed are left alone.
         if (loaded.current) return;
@@ -156,6 +162,17 @@ export function SettingsPanel({ status, stamp, frame, presence, onClose }: Props
     setLanguage(value);
     void save({ companion: { language: value } });
   };
+  const editVoiceFirst = (value: boolean) => {
+    setVoiceFirst(value);
+    void save({ companion: { voiceFirst: value } });
+  };
+  // ---- 外观 ----
+  const editUiLanguage = (value: 'auto' | 'zh' | 'en') => {
+    setUiLanguage(value);
+    // The words follow at once; a failed save leaves them as they were.
+    setLocale(value);
+    void save({ ui: { language: value } });
+  };
   const editInitiative = (value: InitiativeDraft) => {
     setInitiative(value);
     void save({ initiative: value });
@@ -177,7 +194,12 @@ export function SettingsPanel({ status, stamp, frame, presence, onClose }: Props
     }, PAUSE_MS);
   };
 
-  const pages: [Page, string, boolean][] = [['brain', word('brain'), status.brain.ready], ['voice', word('voice'), status.voice.ready], ['her', name.trim() || status.companionName, true]];
+  const pages: [Page, string, boolean][] = [
+    ['appearance', word('appearance'), true],
+    ['brain', word('brain'), status.brain.ready],
+    ['voice', word('voice'), status.voice.ready],
+    ['her', name.trim() || status.companionName, true],
+  ];
 
   return (
     <AppSheet title={word('settings')} frame={frame} presence={presence} onClose={onClose} actions={
@@ -206,6 +228,11 @@ export function SettingsPanel({ status, stamp, frame, presence, onClose }: Props
         {/* Room under the last item: 40px on a desktop; on a phone, clear of the switcher too. */}
         <div ref={fade} className="scroll-fade min-h-0 flex-1 overflow-y-auto px-6 pt-5 pb-28 text-[14px] sm:pb-10 sm:pl-4">
           <p className="letter mb-5 text-[13px] text-muted-foreground italic">{word('tellHer')}</p>
+          {page === 'appearance' && (
+            <div className="grid gap-5">
+              <UiLanguagePicker value={uiLanguage} onChange={editUiLanguage} />
+            </div>
+          )}
           {page === 'brain' && (
             <div className="grid gap-5">
               <p className={cn('flex items-center gap-2', status.brain.ready ? 'text-foreground' : 'text-primary')}>
@@ -256,6 +283,17 @@ export function SettingsPanel({ status, stamp, frame, presence, onClose }: Props
                 <Input id="her-name" value={name} maxLength={40} onChange={e => editName(e.target.value)} onBlur={() => flush('name')} />
               </Field>
               <ReplyLanguagePicker value={language} onChange={editLanguage} />
+              <Field id="her-voice-first" label={say('声音优先', 'Voice first')}>
+                <div className="flex flex-wrap gap-2" role="radiogroup" aria-labelledby="her-voice-first-label">
+                  {([true, false] as const).map(on => (
+                    <button key={String(on)} type="button" role="radio" aria-checked={voiceFirst === on}
+                      onClick={() => editVoiceFirst(on)}
+                      className={choice(voiceFirst === on)}>
+                      {on ? say('开口说', 'Speak') : say('打字，想说了再开口', 'Type, speak when it wants a voice')}
+                    </button>
+                  ))}
+                </div>
+              </Field>
               <InitiativeSettingsSection draft={initiative} onChange={editInitiative} />
               <details className="group">
                 <summary className="cursor-pointer list-none text-[13px] text-muted-foreground hover:text-foreground">
@@ -271,6 +309,18 @@ export function SettingsPanel({ status, stamp, frame, presence, onClose }: Props
                       </button>
                     </p>
                   ))}
+                  <p className="flex items-baseline gap-3">
+                    <span className="text-muted-foreground">{say('对话', 'Conversation')}</span>
+                    <button type="button" className="text-primary hover:underline"
+                      onClick={() => {
+                        if (!confirm(say('新开一段对话？说过的话会清空，信和便签会留下。', 'Start a new conversation? What was said goes; letters and notes stay.'))) return;
+                        api.restartChat()
+                          .then(() => toast.success(say('新对话开始了', 'A new conversation has begun')))
+                          .catch(error => toast.error((error as Error).message));
+                      }}>
+                      {say('新开一段', 'Start fresh')}
+                    </button>
+                  </p>
                 </div>
               </details>
             </div>

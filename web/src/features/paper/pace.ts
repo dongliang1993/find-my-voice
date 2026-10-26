@@ -1,4 +1,4 @@
-// The pen: how a letter comes onto the paper. The model writes far faster than
+// The pen: how her words come onto the paper. The model writes far faster than
 // a hand does; this releases what it wrote a few characters at a time, with the
 // pauses a person makes — a breath at a comma, longer at a full stop, longer
 // still before starting something new — so the paper reads as being written,
@@ -13,7 +13,7 @@
 // hesitation (60–120ms) plus ~40ms a character — about 16 a second.
 
 // Relative, not `@shared`: the test runner has no vite aliases.
-import type { Letter, LetterBlock } from '../../../../src/shared/protocol.js';
+import type { Paper, PaperBlock } from '../../../../src/shared/protocol.js';
 
 export type SegmentKind = 'title' | 'heading' | 'name' | 'note' | 'paragraph' | 'check';
 /** One run of text the pen writes in one go: a title, a heading, an item's name or its note, a paragraph. */
@@ -58,15 +58,15 @@ const width = (text: string) => [...text].reduce((sum, c) => sum + (WIDE.test(c)
 
 const between = ([lo, hi]: readonly [number, number], random: () => number) => lo + (hi - lo) * random();
 
-/** The letter in the order the pen writes it. */
-export function letterSegments(letter: Pick<Letter, 'title' | 'blocks'>): Segment[] {
+/** The paper in the order the pen writes it. */
+export function paperSegments(paper: Pick<Paper, 'title' | 'blocks'>): Segment[] {
   return [
-    ...(letter.title ? [{ key: 'title', kind: 'title' as const, text: letter.title }] : []),
-    ...letter.blocks.flatMap(blockSegments),
+    ...(paper.title ? [{ key: 'title', kind: 'title' as const, text: paper.title }] : []),
+    ...paper.blocks.flatMap(blockSegments),
   ];
 }
 
-export function blockSegments(block: LetterBlock): Segment[] {
+export function blockSegments(block: PaperBlock): Segment[] {
   if (block.type === 'item') {
     return [
       { key: `${block.id}:name`, kind: 'name', text: block.name },
@@ -79,7 +79,7 @@ export function blockSegments(block: LetterBlock): Segment[] {
 export function startPen(now: number, segments: Segment[] = [], { atEnd = false, instant = false } = {}): Pen {
   const pen: Pen = { seg: 0, off: 0, nextAt: now, lastAt: now, instant, marks: {} };
   if (!atEnd || !segments.length) return pen;
-  // Picking up a letter already partly written: what is there shows at once, the rest is paced.
+  // Picking up a paper already partly written: what is there shows at once, the rest is paced.
   const last = segments.length - 1;
   return { ...pen, seg: last, off: segments[last]!.text.length, marks: Object.fromEntries(segments.map(s => [s.key, [s.text.length]])) };
 }
@@ -148,7 +148,7 @@ export function advance(pen: Pen, segments: Segment[], now: number, { speed = 1,
     if (p.off >= seg.text.length) {
       const next = segments[p.seg + 1];
       if (!next) { p.nextAt = now; break; }
-      // A new line of the letter: a pause, longer before a new section.
+      // A new line of the paper: a pause, longer before a new section.
       p.seg++;
       p.off = 0;
       p.nextAt += (next.kind === 'heading' ? PACE.headingMs : next.kind === 'note' ? PACE.commaMs : PACE.newLineMs) / speed;

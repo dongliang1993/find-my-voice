@@ -55,7 +55,7 @@ export class App {
       store: this.store, voice: this.voice, onLog: log,
       canSpeak: () => voiceReady(this.settings.voice),
       createBrain: ({ fresh }) => this.createBrain(fresh),
-      signature: () => this.settings.companion.name,
+      forgetSession: () => this.store.setState(SESSION_KEY, null),
       // Not a full settings change: the brain stays up mid-turn. A new language
       // changes the prompt version, so the next message rebuilds it anyway.
       updatePreferences: ({ language, initiative }) => {
@@ -70,6 +70,7 @@ export class App {
         companionName: this.settings.companion.name,
         userName: this.settings.companion.userName,
         language: this.settings.companion.language,
+        voiceFirst: this.settings.companion.voiceFirst,
       }, new Date()),
     });
     this.memory = new MemoryExtractor({
@@ -123,7 +124,8 @@ export class App {
       auth, dataDir: this.dataDir,
       systemPrompt: buildSystemPrompt(this.dataDir, {
         companionName: this.settings.companion.name, userName: this.settings.companion.userName,
-        comfort: this.settings.companion.comfort, language: this.settings.companion.language, now: new Date(),
+        comfort: this.settings.companion.comfort, language: this.settings.companion.language,
+        voiceFirst: this.settings.companion.voiceFirst, now: new Date(),
       }),
       // A fresh brain forgets the stored id so a lost session is never resumed again.
       resumeSessionId: fresh ? null : this.store.getState(SESSION_KEY),

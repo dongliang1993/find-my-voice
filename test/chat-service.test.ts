@@ -340,3 +340,39 @@ test('nothing is voiced without a voice to say it, or for a line that is not her
   assert.equal(service.voiceMessage(hers.id), null);
   assert.equal(service.voiceMessage(theirs.id), null);
 });
+
+test('two voices in one turn are spoken one after the other, never over each other', async () => {
+  const log: string[] = [];
+  const speak: FakeSpeak = async (_id, text, { onChunk }) => {
+    log.push(`start ${text}`);
+    await new Promise(r => setTimeout(r, 20));
+    onChunk(Buffer.from([1, 2]));
+    log.push(`end ${text}`);
+    return { durationSeconds: 1 };
+  };
+  const { service } = setup(new ScriptedBrain([
+    { type: 'voice', text: '第一句', emotion: null },
+    { type: 'voice', text: '第二句', emotion: null },
+  ]), speak);
+  await service.send(randomUUID(), '在吗');
+  for (let i = 0; i < 200 && log.length < 4; i++) await new Promise(r => setTimeout(r, 5));
+  assert.deepEqual(log, ['start 第一句', 'end 第一句', 'start 第二句', 'end 第二句']);
+});
+
+test('a voice stopped while it waits its turn is stopped, and the queue goes on', async () => {
+  const speak: FakeSpeak = async (_id, _text, { onChunk, signal }) => {
+    await new Promise(r => setTimeout(r, 20));
+    signal?.throwIfAborted();
+    onChunk(Buffer.from([1, 2]));
+    return { durationSeconds: 1 };
+  };
+  const { store, service } = setup(new ScriptedBrain([
+    { type: 'voice', text: '第一句', emotion: null },
+    { type: 'voice', text: '第二句', emotion: null },
+  ]), speak);
+  await service.send(randomUUID(), '在吗');
+  await service.interrupt();
+  const states = () => store.recent().filter(m => m.kind === 'voice').map(m => m.audio?.state);
+  for (let i = 0; i < 200 && states().includes('streaming'); i++) await new Promise(r => setTimeout(r, 5));
+  assert.deepEqual(states(), ['stopped', 'stopped']);
+});

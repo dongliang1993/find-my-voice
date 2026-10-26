@@ -1,23 +1,23 @@
-// The note as one plain text, and back again. The whole-card editor on the
-// page holds the card as text a hand can type freehand; the server reads that
+// A paper as one plain text, and back again. The whole-paper editor on the
+// page holds the paper as text a hand can type freehand; the server reads that
 // text back into the same blocks she writes. Shared so both sides read and
 // write the same lines.
 
-import type { LetterBlock } from './protocol.js';
+import type { PaperBlock } from './protocol.js';
 import { plainMarkedText } from './plain.js';
 
 const LIMITS = { title: 30, heading: 40, name: 80, note: 60, paragraph: 1200, blocks: 40 };
 
 /**
- * The note as one plain text, the way a hand writes it on a card: `##` a
+ * A paper as one plain text, the way a hand writes it on a card: `##` a
  * heading, `-` an item, `- [ ]` / `- [x]` a to-do, a blank line a breath
  * between paragraphs, and anything else a paragraph of its own. What the
  * whole-card editor sends back is read here, so a card typed freehand and a
  * card she wrote meet in the same blocks.
  */
-export function parseNoteText(raw: unknown): LetterBlock[] {
+export function parsePaperText(raw: unknown): PaperBlock[] {
   const text = typeof raw === 'string' ? plainMarkedText(raw).slice(0, 8000) : '';
-  const out: LetterBlock[] = [];
+  const out: PaperBlock[] = [];
   /** Paragraph lines waiting for a blank line to close them. */
   let para: string[] = [];
   const flush = () => {
@@ -51,8 +51,8 @@ export function parseNoteText(raw: unknown): LetterBlock[] {
   return out.slice(0, LIMITS.blocks);
 }
 
-/** The note as one plain text again, the inverse of `parseNoteText`: what the whole-card editor opens with. */
-export function noteText(blocks: LetterBlock[]): string {
+/** The paper as one plain text again, the inverse of `parsePaperText`: what the whole-card editor opens with. */
+export function paperText(blocks: PaperBlock[]): string {
   return blocks.map(b => {
     if (b.type === 'heading') return `## ${b.text}`;
     if (b.type === 'check') return `- [${b.done ? 'x' : ' '}] ${b.text}`;

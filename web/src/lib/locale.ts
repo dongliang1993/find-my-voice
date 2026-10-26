@@ -1,6 +1,9 @@
+import { create } from 'zustand';
+
 /**
- * The language the app's own words are in: always the system's. Her reply
- * language is a setting about her, not about the buttons around her.
+ * The language the app's own words are in: the system's by default, held
+ * by the 外观 setting. Her reply language is a setting about her, not about
+ * the buttons around her.
  */
 export type Ui = 'zh' | 'en';
 /** The same words in both languages. */
@@ -8,7 +11,25 @@ export type Said = Record<Ui, string>;
 
 const SYSTEM: Ui = typeof navigator !== 'undefined' && navigator.language.toLowerCase().startsWith('zh') ? 'zh' : 'en';
 
-export const useUi = (): Ui => SYSTEM;
+type Locale = {
+  /** The words' language, resolved: `auto` never leaves the setting. */
+  ui: Ui;
+  /** Set from the 外观 page; a failed save leaves the words as they were. */
+  setLanguage: (language: 'auto' | 'zh' | 'en') => void;
+};
+
+export const useLocale = create<Locale>()(set => ({
+  ui: SYSTEM,
+  setLanguage: language => {
+    const ui = language === 'auto' ? SYSTEM : language;
+    // `:lang(zh)` in the stylesheet turns the italics off for Chinese;
+    // the attribute is what says which language the words are in.
+    if (typeof document !== 'undefined') document.documentElement.lang = ui === 'zh' ? 'zh-CN' : 'en';
+    set({ ui });
+  },
+}));
+
+export const useUi = (): Ui => useLocale(store => store.ui);
 
 /** A one-off pair of words, where a shared entry in WORDS would not be reused. */
 export const useSay = () => {
@@ -22,10 +43,14 @@ export const dayOf = (iso: string, ui: Ui, withYear = false) =>
     month: ui === 'zh' ? 'long' : 'short', day: 'numeric', ...(withYear ? { year: 'numeric' } : {}),
   });
 
+/** 「16:12」 or 「4:12 PM」. */
+export const timeOf = (iso: string, ui: Ui) =>
+  new Date(iso).toLocaleTimeString(ui === 'zh' ? 'zh-CN' : 'en-US', { hour: 'numeric', minute: '2-digit' });
+
 /** The app's own words, in both languages. */
 export const WORDS = {
   home: { zh: '对话', en: 'Talk' },
-  inbox: { zh: '信箱', en: 'Letters' },
+  papers: { zh: 'Papers', en: 'Papers' },
   settings: { zh: '设置', en: 'Settings' },
   close: { zh: '关闭', en: 'Close' },
   history: { zh: '历史', en: 'History' },
@@ -36,16 +61,20 @@ export const WORDS = {
   saved: { zh: '已保存', en: 'Saved' },
   brain: { zh: '大脑', en: 'Mind' },
   voice: { zh: '声音', en: 'Voice' },
+  appearance: { zh: '外观', en: 'Appearance' },
   unset: { zh: '未配置', en: 'Not set up' },
-  noLetters: { zh: '还没有信。她写给你的东西，会收在这里。', en: 'No letters yet. What she writes you is kept here.' },
-  aLetter: { zh: '一封信', en: 'A letter' },
+  noPapers: { zh: '还没有存下的东西。她写下的，想留着就存进来。', en: 'Nothing saved yet. What she writes down, keep it here.' },
+  untitled: { zh: '无题', en: 'Untitled' },
   writing: { zh: '正在写', en: 'Writing' },
-  unfinished: { zh: '没写完', en: 'Unfinished' },
-  deleteLetter: { zh: '删掉这封信？', en: 'Delete this letter?' },
+  deletePaper: { zh: '从 Papers 删掉？', en: 'Delete from Papers?' },
   keep: { zh: '留着', en: 'Keep' },
   delete: { zh: '删掉', en: 'Delete' },
-  file: { zh: '收进信箱', en: 'Keep with letters' },
-  fold: { zh: '收起', en: 'Put away' },
+  save: { zh: '保存', en: 'Save' },
+  today: { zh: '今天', en: 'Today' },
+  yesterday: { zh: '昨天', en: 'Yesterday' },
+  toStage: { zh: '放回舞台', en: 'Put on the stage' },
+  copy: { zh: '复制', en: 'Copy' },
+  copied: { zh: '已复制', en: 'Copied' },
 } as const satisfies Record<string, Said>;
 
 export type Word = keyof typeof WORDS;

@@ -1,12 +1,12 @@
-// What a letter is made of, and the rules that turn what the model wrote into
+// What a paper is made of, and the rules that turn what the model wrote into
 // something safe to store and render. Pure, so every rule is testable.
 //
 // The tool schemas are deliberately loose. A strict one fails the whole call
-// when a single block is off — and a letter with one odd line should lose that
-// line, not the letter. Each block is checked on its own here instead.
+// when a single block is off — and a paper with one odd line should lose that
+// line, not the paper. Each block is checked on its own here instead.
 
 import { z } from 'zod';
-import type { Letter, LetterBlock, LetterLink, LetterOp, Note } from '../../shared/protocol.js';
+import type { Paper, PaperBlock, PaperLink, PaperOp } from '../../shared/protocol.js';
 import { LINK_KINDS } from '../../shared/links.js';
 import { plainText } from '../../shared/plain.js';
 
@@ -22,29 +22,21 @@ const looseBlock = z.object({
   }).optional().describe('item 可选：能在网上找到的东西才加'),
 }).passthrough();
 
-/** The input of `write_letter`, as the model sees it. */
-export const writeLetterShape = {
-  title: z.string().describe('信的标题，几个字，比如「下雨天」'),
-  blocks: z.array(looseBlock).describe('信的内容，从上到下'),
+/** The input of `write_paper`, as the model sees it. */
+export const writePaperShape = {
+  title: z.string().describe('标题，几个字，比如「下雨天看什么」「今天要做的事」'),
+  blocks: z.array(looseBlock).describe('内容，从上到下'),
 };
 
-/** The input of `edit_letter`. */
-export const editLetterShape = {
-  letterId: z.string().describe('要改的那封信的 id'),
+/** The input of `edit_paper`. */
+export const editPaperShape = {
+  paperId: z.string().optional().describe('要改的那一份的 id；不填就是舞台上那份（或对方正打开着的那份）'),
   ops: z.array(z.object({
     op: z.string().describe('replace（换掉一块）、delete（删掉一块）或 insert（加一块）'),
     blockId: z.string().optional().describe('replace 和 delete：要改的那一块的 id'),
     afterBlockId: z.string().nullable().optional().describe('insert：加在哪一块后面；null 表示加在最前面'),
     block: looseBlock.optional().describe('replace 和 insert：新的那一块'),
   }).passthrough()).describe('要做的改动，按顺序'),
-};
-
-/** The input of `write_note`: the same blocks a letter is made of, no id to name. */
-export const writeNoteShape = {
-  // First, so it streams in before any line: the card knows whether to wipe or append.
-  fresh: z.boolean().optional().describe('换了一个新话题时填 true：擦掉桌上那张重写；同一件事接着写就不填'),
-  title: z.string().describe('便签的标题，几个字，比如「今天要做的事」'),
-  blocks: z.array(looseBlock).describe('便签的内容，从上到下'),
 };
 
 /** The input of `update_preferences`: only what the user asked to change. */
@@ -53,15 +45,6 @@ export const preferencesShape = {
   initiative: z.enum(['off', 'occasional', 'often']).optional().describe('主动找对方的频率：off 不主动、occasional 偶尔、often 经常'),
 };
 
-/** The input of `edit_note`: there is only ever one note, so no id to name. */
-export const editNoteShape = {
-  ops: z.array(z.object({
-    op: z.string().describe('replace（换掉一块）、delete（删掉一块）或 insert（加一块）'),
-    blockId: z.string().optional().describe('replace 和 delete：要改的那一块的 id'),
-    afterBlockId: z.string().nullable().optional().describe('insert：加在哪一块后面；null 表示加在最前面'),
-    block: looseBlock.optional().describe('replace 和 insert：新的那一块'),
-  }).passthrough()).describe('要做的改动，按顺序'),
-};
 
 const LIMITS = { title: 30, heading: 40, name: 80, note: 60, paragraph: 1200, query: 80, blocks: 40 };
 
@@ -75,16 +58,16 @@ const lines = (value: unknown, max: number) =>
     ? plainText(value).split('\n').map(l => l.replace(/[ \t]+/g, ' ').trim()).join('\n').replace(/\n{3,}/g, '\n\n').trim().slice(0, max)
     : '';
 
-function toLink(raw: unknown, name: string): LetterLink | null {
+function toLink(raw: unknown, name: string): PaperLink | null {
   if (!raw || typeof raw !== 'object') return null;
   const { kind, query } = raw as { kind?: unknown; query?: unknown };
-  if (typeof kind !== 'string' || !LINK_KINDS.includes(kind as LetterLink['kind'])) return null;
+  if (typeof kind !== 'string' || !LINK_KINDS.includes(kind as PaperLink['kind'])) return null;
   // A link that names nothing to search for still has the item's own name.
-  return { kind: kind as LetterLink['kind'], query: line(query, LIMITS.query) || name };
+  return { kind: kind as PaperLink['kind'], query: line(query, LIMITS.query) || name };
 }
 
 /** One block as stored, or null when it is not something the paper can show. */
-export function toBlock(raw: unknown, id: string): LetterBlock | null {
+export function toBlock(raw: unknown, id: string): PaperBlock | null {
   if (!raw || typeof raw !== 'object') return null;
   const block = raw as Record<string, unknown>;
   switch (block.type) {
@@ -110,39 +93,39 @@ export function toBlock(raw: unknown, id: string): LetterBlock | null {
 }
 
 /**
- * The blocks of a letter as written. Ids follow the position the model wrote
+ * The blocks of a paper as written. Ids follow the position the model wrote
  * them in, so the ids reported back to it match, even when a block in the
- * middle is dropped. Works on a letter still being streamed as well: the last
+ * middle is dropped. Works on a paper still being streamed as well: the last
  * block may be cut short, and one whose type has not arrived yet is skipped.
  */
-export function toBlocks(raw: unknown): LetterBlock[] {
+export function toBlocks(raw: unknown): PaperBlock[] {
   if (!Array.isArray(raw)) return [];
   return raw.slice(0, LIMITS.blocks).flatMap((b, i) => toBlock(b, `b${i + 1}`) ?? []);
 }
 
 export const toTitle = (raw: unknown) => line(raw, LIMITS.title);
 
-/** The number one past the highest block id ever used in this letter, so a deleted id is never handed out again. */
-export function nextBlockNumber(...versions: LetterBlock[][]): number {
+/** The number one past the highest block id ever used in this paper, so a deleted id is never handed out again. */
+export function nextBlockNumber(...versions: PaperBlock[][]): number {
   const numbers = versions.flat().map(b => Number(/^b(\d+)$/.exec(b.id)?.[1] ?? 0));
   return Math.max(0, ...numbers) + 1;
 }
 
 /**
- * The note as one plain text, and back again. Shared, so the whole-card
+ * A paper as one plain text, and back again. Shared, so the whole-paper
  * editor on the page and the server here read and write the same lines.
  */
-export { parseNoteText, noteText } from '../../shared/notes.js';
+export { parsePaperText, paperText } from '../../shared/paper-text.js';
 
 /**
- * Applies an edit to a letter's blocks. Each op stands on its own: a bad one
+ * Applies an edit to a paper's blocks. Each op stands on its own: a bad one
  * (an id that does not exist, a block that is not valid) is reported and
  * skipped, and the rest still apply — "change the third song and drop the
  * second film" should not lose the first half to a typo in the second.
  */
-export function applyOps(blocks: LetterBlock[], rawOps: unknown, nextNumber: number): { blocks: LetterBlock[]; ops: LetterOp[]; errors: string[] } {
+export function applyOps(blocks: PaperBlock[], rawOps: unknown, nextNumber: number): { blocks: PaperBlock[]; ops: PaperOp[]; errors: string[] } {
   let current = [...blocks];
-  const applied: LetterOp[] = [];
+  const applied: PaperOp[] = [];
   const errors: string[] = [];
   let next = nextNumber;
   const has = (id: unknown): id is string => typeof id === 'string' && current.some(b => b.id === id);
@@ -176,29 +159,24 @@ export function applyOps(blocks: LetterBlock[], rawOps: unknown, nextNumber: num
   return { blocks: current, ops: applied, errors };
 }
 
-const describeBlock = (b: LetterBlock) =>
+const describeBlock = (b: PaperBlock) =>
   b.type === 'item' ? `${b.id} 条目：${b.name}${b.note ? `——${b.note}` : ''}`
     : b.type === 'heading' ? `${b.id} 小标题：${b.text}`
       : b.type === 'check' ? `${b.id} 待办：${b.text}（${b.done ? '已办' : '未办'}）`
         : `${b.id} 段落：${b.text.replace(/\n/g, ' / ')}`;
 
-/** The letter as she needs to see it to change it: every block with its id. */
-export function describeLetter(letter: Pick<Letter, 'id' | 'title' | 'blocks'>): string {
-  return [`信「${letter.title}」（id: ${letter.id}）：`, ...letter.blocks.map(describeBlock)].join('\n');
+/** The paper as she needs to see it to change it: every block with its id. */
+export function describePaper(paper: Pick<Paper, 'id' | 'title' | 'blocks'>): string {
+  return [`「${paper.title || '无题'}」（id: ${paper.id}）：`, ...paper.blocks.map(describeBlock)].join('\n');
 }
 
 /**
- * The line the chat history keeps for a letter, and what her memory reads:
+ * The line the chat history keeps for a paper, and what her memory reads:
  * the title and the names of what she picked, never the whole text.
  */
-export function letterSummary(letter: Pick<Letter, 'title' | 'blocks'>): string {
-  const names = letter.blocks.flatMap(b => (b.type === 'item' ? [b.name] : []));
-  const first = letter.blocks.find(b => b.type === 'paragraph');
+export function paperSummary(paper: Pick<Paper, 'title' | 'blocks'>): string {
+  const names = paper.blocks.flatMap(b => (b.type === 'item' ? [b.name] : b.type === 'check' ? [b.text] : []));
+  const first = paper.blocks.find(b => b.type === 'paragraph');
   const body = names.length ? names.join('、') : first?.type === 'paragraph' ? first.text.replace(/\s+/g, ' ').slice(0, 40) : '';
-  return `（写了一封信「${letter.title || '无题'}」${body ? `：${body}` : ''}）`;
-}
-
-/** The note as she needs to see it to change it: every block with its id. There is only ever one. */
-export function describeNote(note: Pick<Note, 'title' | 'blocks'>): string {
-  return [`便签「${note.title || '无题'}」：`, ...note.blocks.map(describeBlock)].join('\n');
+  return `（写下了「${paper.title || '无题'}」${body ? `：${body}` : ''}）`;
 }

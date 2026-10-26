@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { STAGE_OPEN_LINE } from '@/features/onboarding/layout';
 import { cn } from '@/lib/utils';
 import { audio } from '@/lib/audio';
@@ -36,6 +36,17 @@ type Props = {
  * off, or a reply she only typed) the same pace is kept by hand, at reading
  * speed, so text still arrives as speech and not all at once.
  */
+
+/**
+ * Her words, set so a line never breaks badly: a dash keeps to the word
+ * before it, so no line starts with one, and a hyphenated word ("action-y")
+ * stays whole. Not U+2011: a font without that glyph would set it in another.
+ */
+function keepWhole(text: string): ReactNode[] {
+  return text.replace(/\s+([—–])/g, '\u00a0$1').split(/(\S+-\S+)/).map((part, i) =>
+    i % 2 ? <span key={i} className="whitespace-nowrap">{part}</span> : part);
+}
+
 export function Caption({ messageId, text, audioId, timed, expanded, preview, onPreview, onToggle, opacity }: Props) {
   const beats = useMemo(() => toBeats(text, timed), [text, timed]);
   /** Seconds since this line appeared; only consulted while nothing is audible. */
@@ -93,14 +104,14 @@ export function Caption({ messageId, text, audioId, timed, expanded, preview, on
             the two-line box; only the beat shrinks — the box around it is fixed by
             the stage. A beat is a whole sentence, so it shrinks rather than being cut. */}
         <span key={index} className={cn('subtitles-in block overflow-hidden text-balance',
-          width(current) > MAX_EM ? 'max-h-[4.8em] text-[0.66em]' : 'max-h-[3.2em]')}>{current}</span>
+          width(current) > MAX_EM ? 'max-h-[4.8em] text-[0.66em]' : 'max-h-[3.2em]')}>{keepWhole(current)}</span>
       </span>
       {open && (
         <span className={cn(STAGE_OPEN_LINE, 'subtitles-in text-[clamp(19px,1.6vw,24px)]')}>
           <span className="flex min-h-full flex-col justify-end py-6">
             {/* As wide as the words, then centred: a short reply stays where its subtitle was,
                 a long one reads as a left-aligned paragraph. */}
-            <span className="mx-auto block w-fit max-w-[22em] text-left">{text}</span>
+            <span className="mx-auto block w-fit max-w-[22em] text-left">{keepWhole(text)}</span>
           </span>
         </span>
       )}

@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { LetterBlock } from '@shared/protocol';
-import type { LetterEdit, NoteEdit } from '@/hooks/useChat';
+import type { PaperBlock } from '@shared/protocol';
+import type { PaperEdit } from '@/hooks/useChat';
 
 /**
- * A line of the letter while an edit plays: as it was, being struck out,
+ * A line of the paper while an edit plays: as it was, being struck out,
  * folding away, or being written fresh.
  */
-export type Row = { key: string; block: LetterBlock; phase: 'shown' | 'strike' | 'gone' | 'write' };
+export type Row = { key: string; block: PaperBlock; phase: 'shown' | 'strike' | 'gone' | 'write' };
 
 const sleep = (ms: number) => new Promise<void>(resolve => { window.setTimeout(resolve, ms); });
 
@@ -14,9 +14,8 @@ const sleep = (ms: number) => new Promise<void>(resolve => { window.setTimeout(r
 export const EDIT_MS = { scroll: 500, rest: 300, strike: 400, fold: 300 };
 
 type Options = {
-  letterId: string;
-  /** Letters and notes play their edits the same way. */
-  edits: (LetterEdit | NoteEdit)[];
+  paperId: string;
+  edits: PaperEdit[];
   /** The first writing is over: edits play on a finished page, never over the pen. */
   ready: boolean;
   still: boolean;
@@ -28,14 +27,14 @@ type Options = {
  * Plays her edits on the open paper, one change at a time: the paper scrolls to
  * the line, her cursor rests on it, a red line strikes the old words out, they
  * fold away, and she writes the new ones in their place. Only edits made while
- * this paper is open are played — one made earlier is simply what the letter
+ * this paper is open are played — one made earlier is simply what the paper
  * says now. The strikes leave no trace: when it is over, the paper shows the
- * letter as it now is.
+ * paper as it now is.
  *
- * `rows` is null whenever nothing is playing: then the letter renders itself.
+ * `rows` is null whenever nothing is playing: then the paper renders itself.
  */
-export function useEditPlayer({ letterId, edits, ready, still, scrollTo }: Options) {
-  const played = useRef(Math.max(0, ...edits.filter(e => e.after.id === letterId).map(e => e.seq)));
+export function useEditPlayer({ paperId, edits, ready, still, scrollTo }: Options) {
+  const played = useRef(Math.max(0, ...edits.filter(e => e.after.id === paperId).map(e => e.seq)));
   const [rows, setRows] = useState<Row[] | null>(null);
   /** The line her cursor rests on while she decides what to do with it. */
   const [resting, setResting] = useState<string | null>(null);
@@ -49,13 +48,13 @@ export function useEditPlayer({ letterId, edits, ready, still, scrollTo }: Optio
 
   useEffect(() => {
     if (!ready || busy.current) return;
-    const queue = edits.filter(e => e.after.id === letterId && e.seq > played.current);
+    const queue = edits.filter(e => e.after.id === paperId && e.seq > played.current);
     if (!queue.length) return;
     busy.current = true;
     void (async () => {
       for (const edit of queue) {
         played.current = edit.seq;
-        // Without motion there is nothing to watch: the letter just is the new version.
+        // Without motion there is nothing to watch: the paper just is the new version.
         if (still) continue;
         let current: Row[] = edit.before.blocks.map(block => ({ key: block.id, block, phase: 'shown' }));
         const show = (next: Row[]) => { current = next; if (alive.current) setRows(next); };
@@ -89,7 +88,7 @@ export function useEditPlayer({ letterId, edits, ready, still, scrollTo }: Optio
       busy.current = false;
       if (alive.current) { setRows(null); setResting(null); }
     })();
-  }, [edits, ready, still, letterId, rows]);
+  }, [edits, ready, still, paperId, rows]);
 
   /** A line being written fresh has caught up with itself. */
   const onWritten = useCallback(() => { written.current?.(); written.current = null; }, []);

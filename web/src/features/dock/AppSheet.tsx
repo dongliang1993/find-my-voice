@@ -59,7 +59,7 @@ export function AppSheet({ title, frame, presence, actions, onClose, children }:
         <div className="flex items-center gap-2">
           {actions}
           <button type="button" onClick={onClose} aria-label={word('close')}
-            className="grid size-9 place-items-center rounded-full text-muted-foreground ring-1 ring-(--paper-edge) transition-colors hover:bg-wash hover:text-foreground">
+            className="grid size-8 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-wash hover:text-foreground">
             <X className="size-4" />
           </button>
         </div>

@@ -14,10 +14,10 @@ export type InitiativeKind = 'followup' | 'echo' | 'rhythm';
 export type ChatMessage = {
   id: string;
   role: 'user' | 'assistant';
-  /** `letter`: she handed over a letter; the history shows it as an envelope. */
-  kind: 'text' | 'voice' | 'letter';
+  /** `paper`: she wrote something down; the history shows it as a card that opens it. */
+  kind: 'text' | 'voice' | 'paper';
   /**
-   * Text body; for voice messages, the spoken transcript; for a letter, a
+   * Text body; for voice messages, the spoken transcript; for a paper, a
    * one-line summary of it (title and item names) — what her memory reads.
    */
   text: string;
@@ -25,73 +25,53 @@ export type ChatMessage = {
   audio: AudioInfo | null;
   createdAt: string;
   initiative: InitiativeKind | null;
-  /** Set on `letter` messages. */
-  letterId?: string | null;
+  /** Set on `paper` messages. */
+  paperId?: string | null;
 };
 
-// ---- letters ----
+// ---- papers ----
 
 /** Where an item opens: the page builds the search from this, the model never writes a URL. */
-export type LetterLinkKind = 'movie' | 'music' | 'book' | 'place' | 'web';
-export type LetterLink = { kind: LetterLinkKind; query: string };
+export type PaperLinkKind = 'movie' | 'music' | 'book' | 'place' | 'web';
+export type PaperLink = { kind: PaperLinkKind; query: string };
 
 /**
- * One piece of a letter. Ids are stable for the life of the letter: an edit
+ * One piece of a paper. Ids are stable for the life of the paper: an edit
  * that inserts gets a new one, and nothing ever renumbers.
  */
-export type LetterBlock =
+export type PaperBlock =
   | { id: string; type: 'paragraph'; text: string }
   | { id: string; type: 'heading'; text: string }
-  | { id: string; type: 'item'; name: string; note: string; link: LetterLink | null }
-  /** A to-do line on a note: the box is ticked by a click, from here or by her. */
+  | { id: string; type: 'item'; name: string; note: string; link: PaperLink | null }
+  /** A to-do line: the box is ticked by a click, from here or by her. */
   | { id: string; type: 'check'; text: string; done: boolean };
 
-/** `broken`: the writing stopped part-way; what was written is kept, and it can be written again. */
-export type LetterStatus = 'writing' | 'done' | 'broken';
-
-export type Letter = {
-  id: string;
-  title: string;
-  status: LetterStatus;
-  /** Bumped by every edit; older versions are kept on the server, not sent. */
-  version: number;
-  blocks: LetterBlock[];
-  /** Her name as she signed it. */
-  signature: string;
-  createdAt: string;
-  /** First time the user opened it; null while it is still sealed. */
-  openedAt: string | null;
-};
-
-/** One change an edit made, with ids already resolved: what the paper animates. */
-export type LetterOp =
-  | { op: 'replace'; blockId: string; block: LetterBlock }
-  | { op: 'delete'; blockId: string }
-  /** `afterBlockId` null: at the very top. */
-  | { op: 'insert'; afterBlockId: string | null; block: LetterBlock };
-
-// ---- notes ----
+/** `writing` while she writes it; `done` once she stops — finished, or as far as it got. */
+export type PaperStatus = 'writing' | 'done';
 
 /**
- * A note: the same blocks a letter is made of, for what is only wanted on the
- * spot — a list, a plan, a few steps. Lighter than a letter in every way:
- * one at a time, nothing kept once it is closed.
+ * Everything she writes down is a paper: a list, a plan, a few films, a
+ * letter. One kind of thing, written, edited and kept the same way. Every
+ * paper is kept; saving one only puts it on the Papers list.
  */
-export type Note = {
+export type Paper = {
   id: string;
   title: string;
-  status: NoteStatus;
-  /** Bumped by every edit; no history is kept. */
+  status: PaperStatus;
+  /** Bumped by every edit; older versions are kept on the server, not sent. */
   version: number;
-  blocks: LetterBlock[];
+  blocks: PaperBlock[];
   createdAt: string;
+  /** When it went onto the Papers list; null while it is only on the stage, or in the history. */
+  savedAt: string | null;
 };
 
-/** `writing` while she writes it; `done` once it is all there. Never `broken`: nothing is kept to retry. */
-export type NoteStatus = 'writing' | 'done';
-
-/** One change she made to a note, ids already resolved. */
-export type NoteOp = LetterOp;
+/** One change an edit made, with ids already resolved: what the page animates. */
+export type PaperOp =
+  | { op: 'replace'; blockId: string; block: PaperBlock }
+  | { op: 'delete'; blockId: string }
+  /** `afterBlockId` null: at the very top. */
+  | { op: 'insert'; afterBlockId: string | null; block: PaperBlock };
 
 export type CompanionStatus = 'idle' | 'thinking';
 
@@ -100,11 +80,12 @@ export type ClientEvent =
   | { type: 'interrupt' }
   /** The page reports whether it is on screen, so she only rings the OS when nobody is looking. */
   | { type: 'presence'; visible: boolean }
-  /** Which letter is open on the page, if any: what the user says next is about it. */
-  | { type: 'reading'; letterId: string | null };
+  /** Which paper is open in the Papers app, if any: what the user says next may be about it. */
+  | { type: 'reading'; paperId: string | null };
 
 export type ServerEvent =
-  | { type: 'hello'; messages: ChatMessage[]; status: CompanionStatus; letters: Letter[]; note: Note | null }
+  /** `papers`: every paper still around, newest first; `stage`: the one on the stage. */
+  | { type: 'hello'; messages: ChatMessage[]; status: CompanionStatus; papers: Paper[]; stage: string | null }
   /** A new message, or the latest full state of an existing one. */
   | { type: 'message'; message: ChatMessage }
   | { type: 'text_delta'; messageId: string; delta: string }
@@ -118,19 +99,14 @@ export type ServerEvent =
   | { type: 'status'; status: CompanionStatus }
   /** She started talking on her own; the browser may notify if it is in the background. */
   | { type: 'initiative'; kind: InitiativeKind; messageIds: string[] }
-  /** The latest full state of a letter: created, growing while she writes, finished, or broken off. */
-  | { type: 'letter'; letter: Letter }
-  /** She changed a letter: the new state, and the changes in order, so the paper can show her making them. */
-  | { type: 'letter_edit'; letter: Letter; ops: LetterOp[] }
-  | { type: 'letter_removed'; letterId: string }
-  /** The one note, on the spot: created, growing while she writes, or finished. */
-  | { type: 'note'; note: Note }
-  /** She changed the note: the new state, and the changes in order. */
-  | { type: 'note_edit'; note: Note; ops: NoteOp[] }
-  /** The note was closed on the page: it is gone, and nothing is kept. */
-  | { type: 'note_removed'; noteId: string }
-  /** The note was kept: signed, it became a letter in the inbox, and the table is empty. */
-  | { type: 'note_filed'; noteId: string; letter: Letter }
+  /** The latest full state of a paper: created, growing while she writes, finished, edited by hand, saved. */
+  | { type: 'paper'; paper: Paper }
+  /** She changed a paper: the new state, and the changes in order, so the page can show her making them. */
+  | { type: 'paper_edit'; paper: Paper; ops: PaperOp[] }
+  /** Deleted from the Papers list. */
+  | { type: 'paper_removed'; paperId: string }
+  /** Which paper is on the stage now; null when the stage is clear. */
+  | { type: 'stage'; paperId: string | null }
   /** A setting changed somewhere other than the settings page — she was asked to, out loud. */
   | { type: 'settings' }
   | { type: 'error'; code: string; message: string };
@@ -175,7 +151,9 @@ export type OnboardingStep = 'begin' | 'alias' | 'comfort' | 'rhythm' | 'notes' 
 
 /** Settings as the browser sees them: secrets reduced to presence flags. */
 export type PublicSettings = {
-  companion: { name: string; language: ReplyLanguage };
+  companion: { name: string; language: ReplyLanguage; voiceFirst: boolean };
+  /** The language the app's own words are in. `auto` follows the system. */
+  ui: { language: 'auto' | 'zh' | 'en' };
   initiative: InitiativeSettings;
   brain: { baseUrl: string; model: string; hasApiKey: boolean };
   voice: {
@@ -184,13 +162,14 @@ export type PublicSettings = {
     fish: { referenceId: string; model: FishModel; hasApiKey: boolean };
     elevenlabs: {
       voiceId: string; model: ElevenModel;
-      stability: number; similarity: number; hasApiKey: boolean;
+      stability: number; similarity: number; speakerBoost: boolean; hasApiKey: boolean;
     };
   };
 };
 
 export type SettingsUpdate = {
-  companion?: { name?: string; userName?: string; language?: ReplyLanguage };
+  companion?: { name?: string; userName?: string; language?: ReplyLanguage; voiceFirst?: boolean };
+  ui?: { language?: 'auto' | 'zh' | 'en' };
   initiative?: Partial<Pick<InitiativeSettings, 'mode' | 'notify'>>;
   brain?: { baseUrl?: string; apiKey?: string; model?: string };
   voice?: {
@@ -199,7 +178,7 @@ export type SettingsUpdate = {
     fish?: { apiKey?: string; referenceId?: string; model?: FishModel };
     elevenlabs?: {
       apiKey?: string; voiceId?: string; model?: ElevenModel;
-      stability?: number; similarity?: number;
+      stability?: number; similarity?: number; speakerBoost?: boolean;
     };
   };
 };

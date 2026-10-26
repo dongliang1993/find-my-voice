@@ -1,4 +1,4 @@
-// Best-effort parsing of JSON that is still being written. A letter arrives as
+// Best-effort parsing of JSON that is still being written. A paper arrives as
 // the input of a tool call, streamed a few characters at a time; to start
 // writing before it is finished, each prefix is closed off into the largest
 // valid document it can be: an open string is ended, open arrays and objects

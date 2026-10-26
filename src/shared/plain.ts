@@ -40,8 +40,8 @@ export function plainText(text: string): string {
 
 /**
  * Tags and entities out, everything else in place: for text whose `##` and
- * `-` lines are the format being read, not noise to clean — the note a hand
- * types freehand is marked, and the markers are what make it a card.
+ * `-` lines are the format being read, not noise to clean — the paper a hand
+ * types freehand is marked, and the markers are what make it a paper.
  */
 export function plainMarkedText(text: string): string {
   return text

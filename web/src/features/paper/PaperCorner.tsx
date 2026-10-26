@@ -1,15 +1,15 @@
 import { motion, useReducedMotion } from 'motion/react';
-import type { NotePlace } from '@/features/note/place';
+import type { PaperPlace } from '@/features/paper/place';
 
 /**
- * The note, put away: a corner of paper at the stage's edge, its top corner
+ * The paper, put away: a corner of it at the stage's edge, its top corner
  * turned down. It is still on the table — a click brings it back out.
  */
-export function NoteCorner({ place, onOpen }: { place: NotePlace; onOpen: () => void }) {
+export function PaperCorner({ place, onOpen }: { place: PaperPlace; onOpen: () => void }) {
   const still = useReducedMotion() ?? false;
   const hide = still ? { opacity: 0 } : { opacity: 0, x: -10 };
   return (
-    <motion.button type="button" onClick={onOpen} aria-label="便签"
+    <motion.button type="button" onClick={onOpen} aria-label="Papers"
       initial={hide} animate={{ opacity: 1, x: 0 }} exit={hide}
       transition={{ duration: still ? 0.2 : 0.35, ease: [0.22, 1, 0.36, 1] }}
       whileHover={still ? undefined : { x: 3 }}

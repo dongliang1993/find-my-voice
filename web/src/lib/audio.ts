@@ -116,9 +116,11 @@ class AudioEngine {
     const buffer = ctx.createBuffer(1, channel.length, PCM_SAMPLE_RATE);
     buffer.copyToChannel(channel, 0);
 
-    const stream = this.streams.get(audioId) ?? { cursor: 0, origin: null, sources: [] };
-    // A small lead absorbs network jitter between chunks.
-    const start = Math.max(stream.cursor, ctx.currentTime + 0.08);
+    const known = this.streams.get(audioId);
+    const stream = known ?? { cursor: 0, origin: null, sources: [] };
+    // A small lead absorbs network jitter between chunks. A new voice waits for
+    // the one still sounding: the server sends them in turn, but playback lags behind.
+    const start = Math.max(known ? stream.cursor : this.tail(), ctx.currentTime + 0.08);
     stream.origin ??= start;
     const source = ctx.createBufferSource();
     source.buffer = buffer;
@@ -128,10 +130,29 @@ class AudioEngine {
     stream.sources.push(source);
     source.onended = () => {
       stream.sources = stream.sources.filter(s => s !== source);
-      if (!stream.sources.length && this.playing === audioId) this.setPlaying(null);
+      // The voice queued behind this one is what is heard now.
+      if (!stream.sources.length && this.playing === audioId) this.setPlaying(this.queued(audioId));
     };
     this.streams.set(audioId, stream);
-    this.setPlaying(audioId);
+    // Queued behind another, it is not what is heard yet.
+    if (!this.playing || this.playing === audioId || !this.isStreaming(this.playing)) this.setPlaying(audioId);
+  }
+
+  /** When everything already scheduled has finished sounding. */
+  private tail() {
+    let end = 0;
+    for (const stream of this.streams.values()) if (stream.sources.length) end = Math.max(end, stream.cursor);
+    return end;
+  }
+
+  /** The next stream after `audioId` that still has something to play. */
+  private queued(audioId: string): string | null {
+    let after = false;
+    for (const [id, stream] of this.streams) {
+      if (after && stream.sources.length) return id;
+      if (id === audioId) after = true;
+    }
+    return null;
   }
 
   private keep(audioId: string, channel: Float32Array<ArrayBuffer>) {

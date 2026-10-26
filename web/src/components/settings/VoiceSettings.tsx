@@ -11,7 +11,10 @@ export type VoiceDraft = {
   provider: Provider;
   volcengine: { apiKey: string; voiceId: string; resourceId: string };
   fish: { apiKey: string; referenceId: string; model: FishModel };
-  elevenlabs: { apiKey: string; voiceId: string; model: ElevenModel; stability: number; similarity: number };
+  elevenlabs: {
+    apiKey: string; voiceId: string; model: ElevenModel;
+    stability: number; similarity: number; speakerBoost: boolean;
+  };
 };
 
 const same = (text: string): Said => ({ zh: text, en: text });
@@ -52,6 +55,7 @@ export function draftFrom(settings: PublicSettings | null): VoiceDraft {
       model: settings?.voice.elevenlabs.model ?? 'eleven_v4',
       stability: settings?.voice.elevenlabs.stability ?? 0.5,
       similarity: settings?.voice.elevenlabs.similarity ?? 0.8,
+      speakerBoost: settings?.voice.elevenlabs.speakerBoost ?? true,
     },
   };
 }
@@ -70,6 +74,7 @@ export function patchFrom(draft: VoiceDraft): SettingsUpdate['voice'] {
           ...keep({ apiKey: draft.elevenlabs.apiKey, voiceId: draft.elevenlabs.voiceId }),
           model: draft.elevenlabs.model,
           stability: draft.elevenlabs.stability, similarity: draft.elevenlabs.similarity,
+          speakerBoost: draft.elevenlabs.speakerBoost,
         },
       };
     case 'volcengine':
@@ -173,6 +178,17 @@ export function VoiceSettings({ draft, settings, onChange, onLeave }: Props) {
               onChange={e => setEleven({ similarity: Number(e.target.value) }, 'pause')} />
           </Field>
         </div>
+        <Field id="eleven-boost" label={say('声音贴合（耗延迟）', 'Speaker boost (costs latency)')}>
+          <div className="flex flex-wrap gap-2" role="radiogroup" aria-labelledby="eleven-boost-label">
+            {([true, false] as const).map(on => (
+              <button key={String(on)} type="button" role="radio" aria-checked={draft.elevenlabs.speakerBoost === on}
+                onClick={() => setEleven({ speakerBoost: on }, 'now')}
+                className={choice(draft.elevenlabs.speakerBoost === on)}>
+                {on ? say('开', 'On') : say('关', 'Off')}
+              </button>
+            ))}
+          </div>
+        </Field>
       </> : <>
         <Field id="volc-key" label="API Key" link="https://console.volcengine.com/speech/new/setting/apikeys">
           <Input id="volc-key" value={draft.volcengine.apiKey} onChange={e => setVolc({ apiKey: e.target.value }, 'leave')} {...keyProps('volcengine', say('火山引擎 API Key', 'Volcengine API Key'))} />

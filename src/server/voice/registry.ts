@@ -16,7 +16,8 @@ export function createTtsProvider(voice: VoiceSettings): TtsProvider {
     case 'fish': return new FishAudioProvider({ apiKey: voice.fish.apiKey, model: voice.fish.model, timeoutMs: voice.timeoutMs });
     case 'elevenlabs': return new ElevenLabsProvider({
       apiKey: voice.elevenlabs.apiKey, model: voice.elevenlabs.model,
-      stability: voice.elevenlabs.stability, similarity: voice.elevenlabs.similarity, timeoutMs: voice.timeoutMs,
+      stability: voice.elevenlabs.stability, similarity: voice.elevenlabs.similarity,
+      speakerBoost: voice.elevenlabs.speakerBoost, timeoutMs: voice.timeoutMs,
     });
     case 'volcengine': return new VolcengineProvider({ apiKey: voice.volcengine.apiKey, timeoutMs: voice.timeoutMs, userId: 'find-my-voice' });
   }

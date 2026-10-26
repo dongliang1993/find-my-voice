@@ -364,9 +364,15 @@
     line-height: var(--letter-leading);
   }
 
+  /* Chinese has no italics: the browser would slant the glyphs by force and
+     they would lean, crooked. Headings and asides set in Chinese stay upright
+     — the smaller size and quiet colour carry the distinction on their own. */
+  :lang(zh) i, :lang(zh) em, :lang(zh) [class*='italic'],
+  :lang(zh) .letter-name, :lang(zh) .paper-surface > div[data-type='heading'] { font-style: normal; }
+
   /*
-   * Her letters: cream paper and brown ink in every theme — at night it is the
-   * same letter, held up to the lamp. The seal is the deep coral of her name.
+   * What she writes down: cream paper and brown ink in every theme — at night
+   * it is the same paper, held up to the lamp. The seal is the deep coral of her name.
    */
   :root {
     --paper: #fbf6f1;
@@ -378,7 +384,7 @@
   }
 
   /*
-   * Settings on the same paper as her letters, in every theme. The shadcn
+   * Settings and Papers on the same paper as what she writes, in every theme. The shadcn
    * roles are re-pointed for the subtree, so inputs and buttons inside take
    * the paper's ink without each one being restyled.
    */
@@ -411,21 +417,13 @@
     0%, 100% { opacity: 1; }
     50% { opacity: 0; }
   }
-  /* "Still writing", over the envelope: a short line drawn out and taken back in. */
-  .letter-writing { animation: letter-writing 1.6s ease-in-out infinite; }
-  @keyframes letter-writing {
-    0% { transform: scaleX(0); transform-origin: left; }
-    50% { transform: scaleX(1); transform-origin: left; }
-    50.01% { transform-origin: right; }
-    100% { transform: scaleX(0); transform-origin: right; }
-  }
   /* Her line through words she is taking back, drawn left to right. */
   .ink-strike { animation: ink-strike 400ms ease-in-out both; transform-origin: left; }
   @keyframes ink-strike {
     from { transform: scaleX(0); }
   }
   @media (prefers-reduced-motion: reduce) {
-    .ink-in, .pen-cursor, .letter-writing, .ink-strike { animation: none; }
+    .ink-in, .pen-cursor, .ink-strike { animation: none; }
   }
 
   .voice-ring { box-shadow: 0 0 0 2px var(--primary), 0 0 calc(8px + var(--voice) * 28px) calc(var(--voice) * 6px) var(--halo); }
@@ -437,7 +435,7 @@
    * shows them — a heading set quiet, an item with its reason to the side,
    * a box before its to-do — editable in place. No mode, no markers shown.
    */
-  .note-surface {
+  .paper-surface {
     font-family: var(--font-heading);
     font-size: 15px;
     line-height: 1.7;
@@ -445,9 +443,9 @@
   }
   /* The margins of the lines as the card shows them: 6px a paragraph, 4px an
      item or a to-do, 16px above a heading — every line sits where it did. */
-  .note-surface > div { margin: 4px 0; min-height: 1em; }
-  .note-surface > div[data-type='paragraph'] { margin: 6px 0; }
-  .note-surface > div[data-type='heading'] {
+  .paper-surface > div { margin: 4px 0; min-height: 1em; }
+  .paper-surface > div[data-type='paragraph'] { margin: 6px 0; }
+  .paper-surface > div[data-type='heading'] {
     margin: 16px 0 2px;
     font-size: 13px;
     /* The card shows a heading on the browser's own leading (13 × 1.5): match it, or the lines below jump when the surface opens. */
@@ -455,15 +453,19 @@
     font-style: italic;
     color: var(--paper-quiet);
   }
-  .note-surface > div[data-type='item'] .why {
+  .paper-surface > div[data-type='item'] .why {
     margin-left: 8px;
     font-size: 13px;
     color: var(--paper-quiet);
   }
-  .note-surface > div[data-type='check'] { display: flex; align-items: flex-start; gap: 10px; }
-  .note-surface > div[data-type='check'][data-done='true'] { color: var(--paper-quiet); }
+  /* Narrow, as when reading it: the reason under the name. */
+  @container (width < 28rem) {
+    .paper-surface > div[data-type='item'] .why { display: block; margin-left: 0; line-height: 1.375; }
+  }
+  .paper-surface > div[data-type='check'] { display: flex; align-items: flex-start; gap: 10px; }
+  .paper-surface > div[data-type='check'][data-done='true'] { color: var(--paper-quiet); }
   /* The same box as the card's: a thin red square on the first line's middle. */
-  .note-surface .box {
+  .paper-surface .box {
     flex: none;
     display: block;
     width: 11px;
@@ -474,11 +476,11 @@
     cursor: pointer;
     transition: background-color 150ms ease;
   }
-  .note-surface .box svg { display: none; }
-  .note-surface > div[data-type='check'][data-done='true'] .box { background-color: var(--paper-seal); }
+  .paper-surface .box svg { display: none; }
+  .paper-surface > div[data-type='check'][data-done='true'] .box { background-color: var(--paper-seal); }
 
   /* A to-do's box on the card: one thin red line around nothing, filled once done. */
-  .note-box {
+  .paper-box {
     display: block;
     width: 11px;
     height: 11px;
@@ -487,7 +489,7 @@
     cursor: pointer;
     transition: background-color 150ms ease;
   }
-  .note-box[data-done='true'] { background-color: var(--paper-seal); }
+  .paper-box[data-done='true'] { background-color: var(--paper-seal); }
   /*
    * Crossed off: her red line drawn through the words, left to right. A
    * background on the inline text, so a line that wraps is struck on every row
@@ -502,7 +504,7 @@
     .ink-struck { transition: color 200ms ease, background-size 0s; }
   }
   /* Her pen on the card writes in red; the user's own hand in the paper's brown. */
-  .note-surface { caret-color: var(--paper-ink); }
+  .paper-surface { caret-color: var(--paper-ink); }
   /* While she speaks, bars ride her live level, each slightly out of phase. */
   .voice-bar-live { scale: 1 calc(0.55 + var(--voice) * 0.9 * (0.6 + 0.4 * sin(var(--i) * 1.7))); }
 }

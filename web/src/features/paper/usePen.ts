@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { advance, startPen, type Pen, type Segment } from '@/features/letter/pace';
+import { advance, startPen, type Pen, type Segment } from '@/features/paper/pace';
 
 /**
  * How the pen starts:

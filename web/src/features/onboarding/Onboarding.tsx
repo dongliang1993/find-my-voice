@@ -34,10 +34,6 @@ const RHYTHMS: { value: Rhythm; label: string }[] = [
 const PICK_MS = 300;
 /** The beat she holds after saying your name back: the first thing she knows about you. */
 const NAME_HOLD_MS = 700;
-/** In a demo, how long a pick is left open before it makes itself, as if someone read the cards first. */
-const DEMO_PICK_MS = 1400;
-/** In a demo, how long "Have her pick" waits to be pressed: she has just asked something bigger. */
-const DEMO_ASK_NAME_MS = 2500;
 /** In a demo the name is there at once; she still turns it over this long, as she would with a model. */
 const DEMO_NAMING_MS = 3500;
 
@@ -329,13 +325,6 @@ export function Onboarding({ initial, voiceReady, listenReady, onDone, demo = nu
     window.addEventListener(MEETING_NEXT, onNext);
     return () => window.removeEventListener(MEETING_NEXT, onNext);
   }, [demo]);
-  // Nothing is said to a card or to "Have her pick": in a demo they take themselves.
-  const picksItself = Boolean(demo) && yourMove && (ask === 'comfort' || ask === 'rhythm' || (ask === 'name' && naming === 'ask'));
-  useEffect(() => {
-    if (!picksItself) return;
-    const timer = window.setTimeout(() => advanceRef.current(), ask === 'name' ? DEMO_ASK_NAME_MS : DEMO_PICK_MS);
-    return () => window.clearTimeout(timer);
-  }, [picksItself, ask]);
 
   const orb = (
     <Orb key={`${ask}-${naming}`} ear={ear.ear} canSpeak={canListen} disabled={!orbShown || !yourMove}

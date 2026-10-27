@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { History, Pause, Play, RotateCcw } from 'lucide-react';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
-import type { AppStatus, ChatMessage, CompanionStatus, Paper } from '@shared/protocol';
+import type { AppStatus, ChatMessage, CompanionStatus, DemoCue, Paper } from '@shared/protocol';
 import { MessageList } from '@/components/MessageList';
 import { Papers } from '@/features/paper/Papers';
 import { PaperCard } from '@/features/paper/PaperCard';
@@ -13,7 +13,7 @@ import { HomeIcon } from '@/features/dock/HomeIcon';
 import { PapersIcon } from '@/features/dock/PapersIcon';
 import { SettingsIcon } from '@/features/dock/SettingsIcon';
 import { APP_SWITCH, APP_SWITCH_STILL, FORWARD, RECEDED, RECEDED_STILL } from '@/features/dock/appSwitch';
-import { SettingsPanel } from '@/components/SettingsPanel';
+import { SettingsPanel, type Page as SettingsPage } from '@/components/SettingsPanel';
 import { AppSheet } from '@/features/dock/AppSheet';
 import { toast } from 'sonner';
 import { useWords } from '@/lib/locale';
@@ -31,6 +31,7 @@ import { useIdleChrome } from '@/hooks/useIdleChrome';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { useAmbientTheme, type Mood } from '@/features/stage/ambient';
 import { useTimelapse } from '@/features/stage/useTimelapse';
+import { lapseBetween } from '@/features/stage/timelapse';
 import { lastTake, latestLine } from '@/features/stage/line';
 import { usePaused } from '@/hooks/useVoice';
 import { ASLEEP, STAGE_REST, stageState, VISUALS } from '@/features/stage/state';
@@ -81,6 +82,8 @@ type Props = {
   resting: string | null;
   /** Any touch while she rests. */
   onWake: () => void;
+  /** Demo mode: the time the scene is set at, and what the script last had the page do. */
+  demo?: { clock: string | null; cue: { seq: number; cue: DemoCue } | null } | null;
 };
 
 /**
@@ -95,7 +98,7 @@ type Props = {
  */
 export function Stage({
   messages, status, name, playing, lines, onSend, onInterrupt,
-  needsSetup, online, canListen, arrived, papers, edits, stage, saved, appStatus, settingsStamp, onReading, resting, onWake,
+  needsSetup, online, canListen, arrived, papers, edits, stage, saved, appStatus, settingsStamp, onReading, resting, onWake, demo = null,
 }: Props) {
   const room = useRef<HTMLDivElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
@@ -148,8 +151,11 @@ export function Stage({
   const visual = asleep ? ASLEEP : VISUALS[state];
   const mood = moodOf(messages.at(-1)?.emotion);
   /** A day of light run for recording; while it runs, it paints the room and the chrome is away. */
-  const lapsing = useTimelapse(room, mood);
-  const ambient = useAmbientTheme(room, mood, { held: lapsing });
+  const cue = demo?.cue ?? null;
+  const lapse = useMemo(() => (cue?.cue.type === 'timelapse' ? { seq: cue.seq, lapse: lapseBetween(cue.cue.from, cue.cue.to, cue.cue.durationMs) } : null), [cue]);
+  const lapsing = useTimelapse(room, mood, lapse);
+  const clock = useMemo(() => (demo?.clock ? new Date(demo.clock) : undefined), [demo?.clock]);
+  const ambient = useAmbientTheme(room, mood, { now: clock, held: lapsing });
   // The buttons step back while nothing is happening; they stay put while you speak.
   const idle = useIdleChrome(3000, listening, arrived);
   const hidden = idle || asleep;
@@ -169,7 +175,8 @@ export function Stage({
   // She draws breath once as she starts to think.
   useEffect(() => { if (state === 'thinking') audio.breath(); }, [state]);
 
-  const aside = useHint(arrived && !spoken && state === 'idle' && ear.ear === 'off' && !draft.trim() ? 'stage' : null,
+  // A demo plays to a script; she does not prompt the person recording it.
+  const aside = useHint(!demo && arrived && !spoken && state === 'idle' && ear.ear === 'off' && !draft.trim() ? 'stage' : null,
     STAGE_HINT_MS, HINTS.stage);
 
   const talk = (mode: 'tap' | 'hold') => {
@@ -220,8 +227,25 @@ export function Stage({
   }, [onReading]);
   const kept = useMemo(() => papers.filter(p => p.savedAt), [papers]);
   const wide = useMediaQuery('(min-width: 640px)');
+  /** The paper the demo script opens Papers on, instead of the newest. */
+  const pick = useRef<string | null>(null);
   // Opened side by side, Papers opens on the newest; on a phone, on the list.
-  useEffect(() => { if (view === 'papers' && wide && kept[0]) readPaper(kept[0]); }, [view]);
+  useEffect(() => {
+    if (view !== 'papers' || !wide) return;
+    const first = kept.find(p => p.id === pick.current) ?? kept[0];
+    pick.current = null;
+    if (first) readPaper(first);
+  }, [view]);
+  const [settingsPage, setSettingsPage] = useState<SettingsPage | undefined>(undefined);
+  useEffect(() => {
+    if (cue?.cue.type !== 'openApp') return;
+    const { app, select, tab } = cue.cue;
+    if (app === 'settings') { setSettingsPage(tab); openView('settings'); return; }
+    const paper = kept.find(p => p.id === select);
+    if (view === 'papers' && paper) readPaper(paper);
+    pick.current = select ?? null;
+    openView('papers');
+  }, [cue?.seq]);
   // Deleted elsewhere while open, or Papers closed: nothing is open any more.
   useEffect(() => { if (reading && (view !== 'papers' || !kept.some(p => p.id === reading))) readPaper(null); }, [reading, view, kept, readPaper]);
   /** A card in the history: its paper back on the stage. */
@@ -425,7 +449,7 @@ export function Stage({
           </AppSheet>
         )}
         {view === 'settings' && (
-          <SettingsPanel key="settings" status={appStatus} stamp={settingsStamp} onClose={closeApp}
+          <SettingsPanel key="settings" initialPage={settingsPage} status={appStatus} stamp={settingsStamp} onClose={closeApp}
             frame={frame} presence={presence} />
         )}
       </AnimatePresence>

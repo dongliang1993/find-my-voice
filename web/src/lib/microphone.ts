@@ -14,12 +14,14 @@ const TRAILING_SILENCE_MS = 1100;
 const NO_SPEECH_MS = 7000;
 /** Hard cap on one answer by default; a name takes a few seconds. */
 const MAX_MS = 8000;
+/** A held Space ends when it is let go; this only catches a release the window never saw. */
+const HELD_MAX_MS = 5 * 60_000;
 
 export type MicFailure = 'unsupported' | 'denied' | 'no-device' | 'failed';
 export type Heard = { audio: Blob; mime: string } | { silent: true };
 export type ListenOptions = {
   signal?: AbortSignal;
-  /** Hard cap on the clip. */
+  /** Hard cap on the clip while it ends on silence; a held Space is not cut short by it. */
   maxMs?: number;
   /** False while Space is held: a pause is not the end, letting go is. */
   endOnSilence?: boolean;
@@ -84,9 +86,10 @@ class Microphone {
 
   /**
    * Records one answer: starts at once; ends when `stop()` is called (a second
-   * tap, a released key), on trailing silence after speech, on the cap, or when
-   * `signal` aborts. Resolves `{ silent: true }` when nothing was said or the
-   * answer was aborted — a silent clip is never sent to be transcribed.
+   * tap, a released key), on trailing silence after speech, on the cap (a long
+   * one while Space is held), or when `signal` aborts. Resolves `{ silent: true }`
+   * when nothing was said or the answer was aborted — a silent clip is never
+   * sent to be transcribed.
    */
   async listen({ signal, maxMs = MAX_MS, endOnSilence = true }: ListenOptions = {}): Promise<Heard> {
     this.stopEarly = false;
@@ -98,6 +101,7 @@ class Microphone {
     const chunks: Blob[] = [];
     recorder.ondataavailable = event => { if (event.data.size) chunks.push(event.data); };
 
+    const cap = endOnSilence ? maxMs : HELD_MAX_MS;
     const started = performance.now();
     let spoke = false;
     let quietSince: number | null = null;
@@ -117,7 +121,7 @@ class Microphone {
         else if (spoke) quietSince ??= now;
         const elapsed = now - started;
         const paused = endOnSilence && ((!spoke && elapsed > NO_SPEECH_MS) || (quietSince !== null && now - quietSince > TRAILING_SILENCE_MS));
-        if (elapsed > maxMs || paused) finish();
+        if (elapsed > cap || paused) finish();
       }, 50);
     });
     if (recorder.state !== 'inactive') recorder.stop();

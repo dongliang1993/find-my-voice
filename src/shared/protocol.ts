@@ -83,7 +83,22 @@ export type ClientEvent =
   /** Which paper is open in the Papers app, if any: what the user says next may be about it. */
   | { type: 'reading'; paperId: string | null }
   /** A touch on the page while she rests — a click, a key, the mic: she is up. */
-  | { type: 'wake' };
+  | { type: 'wake' }
+  /** Demo mode only: the recording moves through the script. */
+  | { type: 'demo'; action: DemoAction; scene?: number };
+
+export type DemoAction = 'next' | 'back' | 'reset' | 'jump';
+
+/** The first meeting's answers in a demo: what → gives at each question. */
+export type DemoMeeting = { alias: string; comfort: Comfort; rhythm: Rhythm; notes: string; herName: string; replyDelayMs: readonly [number, number] };
+
+/** Something the script does to the page itself rather than to the conversation. */
+export type DemoCue =
+  | { type: 'openApp'; app: 'papers' | 'settings'; select?: string; tab?: 'appearance' | 'brain' | 'voice' | 'her' }
+  /** Clock times as HH:MM; the page runs its day of light between them. */
+  | { type: 'timelapse'; from: string; to: string; durationMs: number }
+  /** The page starts over, as if just opened. */
+  | { type: 'reload' };
 
 export type ServerEvent =
   /** `papers`: every paper still around, newest first; `stage`: the one on the stage. */
@@ -113,6 +128,8 @@ export type ServerEvent =
   | { type: 'stage'; paperId: string | null }
   /** A setting changed somewhere other than the settings page — she was asked to, out loud. */
   | { type: 'settings' }
+  /** Demo mode only: where the script is, the time it plays at (ISO, null for the real one), and what the page should do. */
+  | { type: 'demo'; scene: number; beat: number; clock: string | null; hideCursor: boolean; meeting: DemoMeeting; letters: string[]; cue?: DemoCue }
   | { type: 'error'; code: string; message: string };
 
 export const PCM_SAMPLE_RATE = 24000;

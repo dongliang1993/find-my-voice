@@ -17,11 +17,14 @@ import { MemoryExtractor } from './memory/extractor.js';
 import { extractAliasWithClaude, plainAlias } from './profile/alias.js';
 import { acceptable } from './profile/naming.js';
 import { proposeNameWithClaude } from './profile/propose.js';
-import { buildSystemPrompt, personaVersion, readProfileDocument, writeProfileDocument } from './profile/profile.js';
+import { buildSystemPrompt, firstIdentity, personaVersion, readProfileDocument, writeProfileDocument } from './profile/profile.js';
 import { VoicePipeline } from './voice/pipeline.js';
 import type { TtsProvider } from './voice/provider.js';
 import { activeVoice, createTranscriber, createTtsProvider, listenReady, voiceReady } from './voice/registry.js';
 import { DomainError } from './errors.js';
+import { DemoDirector } from './demo/director.js';
+import type { DemoScript } from './demo/script.js';
+import { DemoVoice } from './demo/voice.js';
 import type { AppStatus, Comfort, HeardAlias, Rhythm } from '../shared/protocol.js';
 
 const SESSION_KEY = 'brain_session';
@@ -36,12 +39,17 @@ export class App {
   readonly initiative: InitiativeScheduler;
   /** Each connected page and whether it is on screen right now. */
   readonly presence = new Map<symbol, boolean>();
+  /** Demo mode: the script plays her part, and keeps the clock. */
+  readonly demo: DemoDirector | null = null;
   private tts: TtsProvider;
+  private demoVoice: DemoVoice | null = null;
 
-  constructor(readonly dataDir: string, readonly log: (line: string) => void = line => process.stderr.write(`${line}\n`)) {
+  constructor(readonly dataDir: string, readonly log: (line: string) => void = line => process.stderr.write(`${line}\n`),
+    { demo }: { demo?: DemoScript } = {}) {
     this.settings = loadSettings(dataDir);
-    this.store = new ChatStore(dataDir);
-    this.tts = createTtsProvider(this.settings.voice);
+    this.store = new ChatStore(dataDir, demo ? () => this.now() : undefined);
+    if (demo) this.demoVoice = new DemoVoice(resolve(dataDir, 'voice-cache'), () => createTtsProvider(this.settings.voice), log);
+    this.tts = this.createTts();
     this.voice = new VoicePipeline({
       // Indirection so a rebuilt provider (new key, other backend) is picked up without a new pipeline.
       provider: { synthesize: (input, options) => this.tts.synthesize(input, options) },
@@ -54,7 +62,7 @@ export class App {
     });
     this.chat = new ChatService({
       store: this.store, voice: this.voice, onLog: log,
-      canSpeak: () => voiceReady(this.settings.voice),
+      canSpeak: () => this.canSpeak(),
       // Up again with the hours the first meeting said the user likes company.
       wakeAt: now => wakeAt(this.settings.companion.rhythm, now),
       createBrain: ({ fresh }) => this.createBrain(fresh),
@@ -108,7 +116,33 @@ export class App {
         }
       },
     });
-    this.initiative.start();
+    if (demo) {
+      this.demo = new DemoDirector(demo, this.demoVoice!, this);
+      this.demo.start();
+    } else {
+      // Unprompted turns and memory both call the model; a demo has neither.
+      this.initiative.start();
+    }
+  }
+
+  /** The time as the app keeps it: the scene's in a demo. */
+  now() {
+    return this.demo?.now() ?? new Date();
+  }
+
+  private createTts(): TtsProvider {
+    return this.demoVoice ?? createTtsProvider(this.settings.voice);
+  }
+
+  /** In a demo her voice is the takes made ahead of time, whatever the provider settings say. */
+  private canSpeak() {
+    return Boolean(this.demo) || voiceReady(this.settings.voice);
+  }
+
+  /** A settings write that leaves the brain alone; the demo restarts it itself when it needs to. */
+  applySettings(patch: SettingsPatch) {
+    this.settings = updateSettings(this.dataDir, patch);
+    this.tts = this.createTts();
   }
 
   private brainAuth() {
@@ -116,6 +150,7 @@ export class App {
   }
 
   private createBrain(fresh: boolean): Brain {
+    if (this.demo) return this.demo.brain();
     // Development only: a scripted brain, so the page can be driven without a model.
     const script = process.env.FMV_BRAIN_SCRIPT;
     if (script) return new ScriptBrain(JSON.parse(readFileSync(script, 'utf8')) as ScriptStep[][], line => this.log(`[script] ${line}`));
@@ -142,14 +177,16 @@ export class App {
     const { voice, companion } = this.settings;
     return {
       companionName: companion.name,
-      brain: { source: auth.source, ready: auth.source !== 'none' || Boolean(process.env.FMV_BRAIN_SCRIPT), model: auth.model ?? null },
-      voice: { provider: voice.provider, ready: voiceReady(voice) },
-      listen: { ready: listenReady(voice) },
+      brain: { source: auth.source, ready: auth.source !== 'none' || Boolean(process.env.FMV_BRAIN_SCRIPT) || Boolean(this.demo), model: auth.model ?? null },
+      voice: { provider: voice.provider, ready: this.canSpeak() },
+      // A demo still records what is said; it only never transcribes it.
+      listen: { ready: Boolean(this.demo) || listenReady(voice) },
     };
   }
 
   /** A spoken message: the transcript, nothing else. Sending stays the page's job. */
   async hear(audio: Buffer, mime: string): Promise<string> {
+    if (this.demo) return this.demo.heard(this.store.onboarding());
     const { text } = await createTranscriber(this.settings.voice).transcribe(audio, { mime });
     return text;
   }
@@ -161,6 +198,10 @@ export class App {
    */
   async hearAlias(audio: Buffer, mime: string): Promise<HeardAlias> {
     if (this.store.onboarding().completedAt) throw new DomainError('ONBOARDING_DONE', '引导已经结束了。', 409);
+    if (this.demo) {
+      const { userName } = this.demo.script.preset;
+      return { said: userName, alias: userName };
+    }
     const { text } = await createTranscriber(this.settings.voice).transcribe(audio, { mime });
     if (!text) return { said: '', alias: null };
     const bare = plainAlias(text);
@@ -187,7 +228,7 @@ export class App {
    * one the line is text, so onboarding degrades instead of erroring out.
    */
   narrate(text: string, { speak = false }: { speak?: boolean } = {}) {
-    const canSpeak = speak && voiceReady(this.settings.voice);
+    const canSpeak = speak && this.canSpeak();
     return this.chat.narrate(text, { speak: canSpeak });
   }
 
@@ -204,6 +245,11 @@ export class App {
     const state = this.store.onboarding();
     if (state.completedAt) return null;
     if (state.draft.nameProposed) return null;
+    if (this.demo) {
+      const { herName, herNameReason } = this.demo.script.preset;
+      this.store.saveOnboarding(state.step, { ...state.draft, nameProposed: true }, false);
+      return { name: herName, reason: herNameReason };
+    }
 
     const auth = this.brainAuth();
     if (auth.source === 'none') throw new DomainError('BRAIN_NOT_CONFIGURED', '还没有可用的模型凭证。');
@@ -233,15 +279,14 @@ export class App {
     this.settings = updateSettings(this.dataDir, {
       companion: { name: final.companionName, userName: final.alias, comfort: final.comfort, rhythm: final.rhythm },
     });
-    this.tts = createTtsProvider(this.settings.voice);
+    this.tts = this.createTts();
 
     // Her first page: who she is, including where her own name came from.
     // A file that already exists wins outright — onboarding never touches it,
     // hand-written or from an earlier run.
     const identity = readProfileDocument(this.dataDir, 'identity');
     if (identity.content === null) {
-      const identityFirst = `# 我是谁\n${final.nameOrigin}\n\n# 我们怎么认识\n${new Date().toLocaleDateString('sv-SE')} 第一次见面，${final.notes ? `她第一天跟我说的是：${final.notes}` : '她第一天还没说多少话。'}`;
-      try { writeProfileDocument(this.dataDir, 'identity', identityFirst, null); }
+      try { writeProfileDocument(this.dataDir, 'identity', firstIdentity(final.nameOrigin, final.notes, this.now()), null); }
       catch (error) { if (!(error instanceof DomainError)) throw error; }
     } else {
       this.log('[onboarding] identity file exists; keeping it');
@@ -250,11 +295,12 @@ export class App {
     this.store.saveOnboarding(7, state.draft, true);
     // The next message starts a fresh brain with the new names in the prompt.
     await this.chat.resetBrain();
+    this.demo?.onboarded();
   }
 
   async updateSettings(patch: SettingsPatch) {
     this.settings = updateSettings(this.dataDir, patch);
-    this.tts = createTtsProvider(this.settings.voice);
+    this.tts = this.createTts();
     // Persona or credentials may have changed; the next message starts a fresh brain process.
     if (patch.brain || patch.companion) await this.chat.resetBrain();
     return this.settings;

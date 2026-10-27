@@ -10,6 +10,7 @@ import type { PaperEdit } from '@/hooks/useChat';
 import { api } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { dayOf, timeOf, useSay, useUi } from '@/lib/locale';
+import { ReadAloud } from '@/features/demo/ReadAloud';
 
 type Source = (segment: Segment) => { at: number; text: string }[] | null;
 type Cursor = { key: string; stamp: number } | null;
@@ -386,14 +387,14 @@ export function PaperBody({ paper, edits, still, page = false, signer, onWriting
       <h2 className="font-heading text-[38px] leading-[1.15] font-normal tracking-[-0.01em] text-balance">
         {title && <Ink segment={title} source={source} cursor={cursor} />}
       </h2>
-      <p className="mt-2 text-[12px] text-(--paper-quiet) tabular-nums">{dayOf(paper.createdAt, ui)} · {timeOf(paper.createdAt, ui)}</p>
+      <p className="mt-2 text-[12px] text-(--paper-quiet) tabular-nums">{dayOf(paper.createdAt, ui)} · {timeOf(paper.createdAt, ui)}{settled && <ReadAloud paperId={paper.id} />}</p>
     </header>
   ) : (
     <header className="flex-none px-11 pt-11">
       <h2 className="font-heading text-[27px] leading-[1.2] font-normal text-balance italic">
         {title && <Ink segment={title} source={source} cursor={cursor} />}
       </h2>
-      <p className="mt-1.5 text-[12px] text-(--paper-quiet) tabular-nums">{dayOf(paper.createdAt, ui)} · {timeOf(paper.createdAt, ui)}</p>
+      <p className="mt-1.5 text-[12px] text-(--paper-quiet) tabular-nums">{dayOf(paper.createdAt, ui)} · {timeOf(paper.createdAt, ui)}{settled && <ReadAloud paperId={paper.id} />}</p>
     </header>
   );
 

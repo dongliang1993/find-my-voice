@@ -17,6 +17,13 @@ const minutes = (hm: string | undefined) => {
   return h < 24 && min < 60 ? h * 60 + min : null;
 };
 
+/** A lapse between two clock times (HH:MM), as the demo script names them. */
+export function lapseBetween(from: string, to: string, ms: number): Lapse {
+  const a = minutes(from);
+  const b = minutes(to);
+  return { ...(a !== null && b !== null && a !== b ? { from: a, to: b } : { from: DEFAULT.from, to: DEFAULT.to }), ms };
+}
+
 export function readLapse(search: string): Lapse {
   const query = new URLSearchParams(search);
   const [a, b] = (query.get('timelapse') ?? '').split('-');

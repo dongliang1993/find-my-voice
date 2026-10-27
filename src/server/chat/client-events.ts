@@ -7,4 +7,5 @@ export const clientEventSchema: z.ZodType<ClientEvent> = z.discriminatedUnion('t
   z.object({ type: z.literal('presence'), visible: z.boolean() }),
   z.object({ type: z.literal('reading'), paperId: z.string().min(1).max(80).nullable() }),
   z.object({ type: z.literal('wake') }),
+  z.object({ type: z.literal('demo'), action: z.enum(['next', 'back', 'reset', 'jump']), scene: z.number().int().min(1).max(99).optional() }),
 ]);

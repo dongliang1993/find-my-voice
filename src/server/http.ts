@@ -145,6 +145,13 @@ export function createHttp(app: App, webRoot: string) {
     return c.body(await readFile(path), 200, { 'Content-Type': 'audio/wav', 'Cache-Control': 'private, max-age=31536000, immutable' });
   });
 
+  // A letter she reads aloud in a demo, from the take made ahead of time.
+  http.get('/api/demo/letter/:id', c => {
+    const wav = app.demo?.letter(c.req.param('id'));
+    if (!wav) return c.json({ code: 'NOT_FOUND', message: '这封信还没有预生成的朗读' }, 404);
+    return c.body(new Uint8Array(wav), 200, { 'Content-Type': 'audio/wav', 'Cache-Control': 'no-store' });
+  });
+
   // A line she only typed, said aloud on request; the voice streams over the socket like any other.
   http.post('/api/messages/:id/voice', c => {
     const audioId = app.chat.voiceMessage(c.req.param('id'));
@@ -228,7 +235,10 @@ export function createHttp(app: App, webRoot: string) {
         if (origin && host && new URL(origin).host !== host) { ws.close(1008, 'Forbidden origin'); return; }
         const send = (event: ServerEvent) => ws.send(JSON.stringify(event));
         send(app.chat.snapshot());
-        unsubscribe = app.chat.subscribe(send);
+        const unsubscribeChat = app.chat.subscribe(send);
+        const unsubscribeDemo = app.demo?.subscribe(send);
+        if (app.demo) send(app.demo.state());
+        unsubscribe = () => { unsubscribeChat(); unsubscribeDemo?.(); };
       },
       onMessage(event, ws) {
         let parsed;
@@ -244,7 +254,14 @@ export function createHttp(app: App, webRoot: string) {
           const seen = app.presence.get(viewer);
           app.presence.set(viewer, message.visible);
           // Opening the app is when an opening is worth most; the gate still decides whether there is one.
-          if (message.visible && !seen) void app.initiative.tick();
+          if (message.visible && !seen && !app.demo) void app.initiative.tick();
+        }
+        else if (message.type === 'demo') {
+          const { demo } = app;
+          if (!demo) return;
+          const run = message.action === 'next' ? demo.next() : message.action === 'back' ? demo.back()
+            : demo.jump(message.action === 'jump' && message.scene ? message.scene - 1 : undefined);
+          run.catch(error => app.log(`[demo] ${message.action} failed: ${(error as Error).stack ?? error}`));
         }
         else if (message.type === 'reading') app.chat.setReading(message.paperId);
         else if (message.type === 'wake') app.chat.wake();

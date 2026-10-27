@@ -375,7 +375,9 @@ export function Switcher({ apps, current, rest, onOpen, still = false, hidden = 
       {apps.map((a, i) => (
         <div key={a.id} ref={el => { cards.current[i] = el; }} aria-hidden="true"
           style={{ left: PAD, bottom: PAD, width: CARD, height: CARD, transformOrigin: '50% 50%' }}
+          // At night a cream card is a lamp left on in the corner: it takes on the dark room around it.
           className={cn('absolute grid place-items-center rounded-[11px] bg-(--paper) text-(--her) ring-1 ring-(--paper-edge) will-change-transform',
+            'in-data-[dark=true]:bg-[color-mix(in_srgb,var(--paper)_42%,var(--base))] in-data-[dark=true]:ring-white/5',
             still && 'transition-opacity duration-200')}>
           <div className="size-8">{a.icon}</div>
           {/* The warm light across the face as it turns: only while it moves. */}

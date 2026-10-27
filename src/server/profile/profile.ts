@@ -13,6 +13,10 @@ const hash = (content: string) => createHash('sha256').update(content).digest('h
 
 export type ProfileDocument = { name: ProfileName; path: string; content: string | null; sha256: string | null; updatedAt: string | null };
 
+/** Her first page, written when the first meeting ends: who she is, and how the two of them met. */
+export const firstIdentity = (nameOrigin: string, notes: string, met: Date) =>
+  `# 我是谁\n${nameOrigin}\n\n# 我们怎么认识\n${met.toLocaleDateString('sv-SE')} 第一次见面，${notes ? `她第一天跟我说的是：${notes}` : '她第一天还没说多少话。'}`;
+
 export function readProfileDocument(dataDir: string, name: ProfileName): ProfileDocument {
   const path = resolve(dataDir, FILES[name]);
   const empty: ProfileDocument = { name, path, content: null, sha256: null, updatedAt: null };

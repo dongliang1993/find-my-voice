@@ -193,6 +193,16 @@ export class ChatService {
   }
 
   /**
+   * A turn with nothing new said, live like a reply: for a scripted brain
+   * that already knows what she says next.
+   */
+  prompt(): Promise<void> {
+    this.wake();
+    this.jobs.push({ type: 'reply', texts: [] });
+    return this.start();
+  }
+
+  /**
    * Offers her a chance to speak first. Only when idle: never interrupts a
    * conversation in progress. She may decline (PASS), which leaves no trace.
    */
@@ -428,6 +438,12 @@ export class ChatService {
     this.seen.set(paper.id, paper.version);
     this.refreshCard(paper);
     this.emit({ type: 'paper', paper });
+  }
+
+  /** Gone entirely, written or not: for a paper about to be written again under the same id. */
+  discardPaper(paperId: string) {
+    if (this.options.store.paper(paperId) || this.options.store.paperMessageId(paperId)) this.dropPaper(paperId);
+    else this.options.store.removePaper(paperId);
   }
 
   /** Gone entirely, with its card: only what she said remains. */

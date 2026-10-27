@@ -561,3 +561,6 @@
 @media (prefers-reduced-motion: reduce) {
   .scroll-fade, .scroll-fade::-webkit-scrollbar-thumb { transition: none; }
 }
+
+/* Demo recording: no pointer in the shot. */
+[data-demo-cursor], [data-demo-cursor] * { cursor: none !important; }

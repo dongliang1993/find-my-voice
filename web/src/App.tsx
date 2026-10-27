@@ -7,6 +7,7 @@ import { Toaster } from '@/components/ui/sonner';
 import { LoadingGate } from '@/features/loading';
 import { startBoot, useBoot } from '@/features/loading/boot';
 import { Stage } from '@/features/stage/Stage';
+import { useDemo } from '@/features/demo/useDemo';
 import { useChat } from '@/hooks/useChat';
 import { useReachOut } from '@/hooks/useReachOut';
 import { usePlaying, useVoiceGlow } from '@/hooks/useVoice';
@@ -55,11 +56,12 @@ export function App() {
   const needsSetup = status !== null && (!status.brain.ready || !status.voice.ready);
   /** Undecided until the first fetch lands; never true once it is over. */
   const firstMeeting = onboarding !== null && onboarding.completedAt === null;
+  useDemo(chat.demo, chat.cue, chat.demoAction, { meeting: firstMeeting });
 
   // The first meeting runs before anything else; a finished one never returns.
   // The opening plays by itself, so it must know whether a voice is ready before it starts.
   const screen = firstMeeting
-    ? status && <Onboarding initial={onboarding} voiceReady={status.voice.ready} listenReady={status.listen.ready} onDone={() => {
+    ? status && <Onboarding initial={onboarding} demo={chat.demo?.meeting ?? null} voiceReady={status.voice.ready} listenReady={status.listen.ready} onDone={() => {
       setArrived(true);
       markOnboarded();
       refreshStatus();
@@ -74,7 +76,8 @@ export function App() {
           needsSetup={needsSetup}
           online={online && Boolean(status.brain.ready)}
           resting={chat.resting} onWake={chat.wake}
-          onReading={chat.setReading} />
+          onReading={chat.setReading}
+          demo={chat.demo && { clock: chat.demo.clock, cue: chat.cue }} />
         <Toaster position="top-center" />
       </>
     );

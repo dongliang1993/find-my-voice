@@ -29,6 +29,30 @@ const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 /** How often a scripted paper sends what it has: the same cadence the real brain throttles to. */
 const PROGRESS_MS = 150;
 
+/**
+ * Streams the paper's JSON a slice at a time through the same parser the real
+ * brain uses. With `breakAt`, stops that far in, as if the model had failed,
+ * and returns false.
+ */
+export async function streamPaper(paperId: string, paper: { title: string; blocks: unknown[] }, ms: number, sink: BrainSink,
+  isStopped: () => boolean, breakAt = 1): Promise<boolean> {
+  sink({ type: 'paper_start', paperId });
+  const json = JSON.stringify(paper);
+  const steps = Math.max(1, Math.round(ms / PROGRESS_MS));
+  let sent = '';
+  for (let i = 1; i <= steps && !isStopped(); i++) {
+    if (i / steps > breakAt) return false;
+    await sleep(PROGRESS_MS);
+    const draft = (parsePartialJson(json.slice(0, Math.round((json.length * i) / steps))) ?? {}) as { title?: unknown; blocks?: unknown };
+    const progress = { title: toTitle(draft.title), blocks: toBlocks(draft.blocks) };
+    const key = JSON.stringify(progress);
+    if (key !== sent) { sent = key; sink({ type: 'paper_progress', paperId, ...progress }); }
+  }
+  if (isStopped()) return false;
+  sink({ type: 'paper_done', paperId, title: toTitle(paper.title), blocks: toBlocks(paper.blocks) });
+  return true;
+}
+
 export class ScriptBrain implements Brain {
   closed = false;
   private turn = 0;
@@ -58,28 +82,8 @@ export class ScriptBrain implements Brain {
     }
   }
 
-  /**
-   * Streams the paper's JSON a slice at a time through the same parser the real
-   * brain uses. With `breakAt`, stops that far in, as if the model had failed,
-   * and returns false.
-   */
-  private async write(paper: { title: string; blocks: unknown[] }, ms: number, sink: BrainSink, breakAt = 1): Promise<boolean> {
-    const paperId = randomUUID();
-    sink({ type: 'paper_start', paperId });
-    const json = JSON.stringify(paper);
-    const steps = Math.max(1, Math.round(ms / PROGRESS_MS));
-    let sent = '';
-    for (let i = 1; i <= steps && !this.stopped; i++) {
-      if (i / steps > breakAt) return false;
-      await sleep(PROGRESS_MS);
-      const draft = (parsePartialJson(json.slice(0, Math.round((json.length * i) / steps))) ?? {}) as { title?: unknown; blocks?: unknown };
-      const progress = { title: toTitle(draft.title), blocks: toBlocks(draft.blocks) };
-      const key = JSON.stringify(progress);
-      if (key !== sent) { sent = key; sink({ type: 'paper_progress', paperId, ...progress }); }
-    }
-    if (this.stopped) return false;
-    sink({ type: 'paper_done', paperId, title: toTitle(paper.title), blocks: toBlocks(paper.blocks) });
-    return true;
+  private write(paper: { title: string; blocks: unknown[] }, ms: number, sink: BrainSink, breakAt = 1): Promise<boolean> {
+    return streamPaper(randomUUID(), paper, ms, sink, () => this.stopped, breakAt);
   }
 
   async interrupt() { this.stopped = true; }

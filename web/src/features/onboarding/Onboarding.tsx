@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import type { Comfort, Rhythm } from '@shared/protocol';
+import type { Comfort, DemoMeeting, Rhythm } from '@shared/protocol';
+import { MEETING_NEXT } from '@/features/demo/useDemo';
 import { Quiet } from '@/features/onboarding/answer';
 import { ARRIVAL, Frame } from '@/features/onboarding/Frame';
 import type { SpiralStage } from '@/components/Spiral';
@@ -12,7 +13,7 @@ import { api, type OnboardingState } from '@/lib/api';
 import { microphone } from '@/lib/microphone';
 import { cn } from '@/lib/utils';
 
-type Props = { initial: OnboardingState; voiceReady: boolean; listenReady: boolean; onDone: () => void };
+type Props = { initial: OnboardingState; voiceReady: boolean; listenReady: boolean; onDone: () => void; demo?: DemoMeeting | null };
 /** Where naming stands: asked, she is thinking, she proposed, or the user names her. */
 type Naming = 'ask' | 'thinking' | 'proposed' | 'own';
 
@@ -33,6 +34,12 @@ const RHYTHMS: { value: Rhythm; label: string }[] = [
 const PICK_MS = 300;
 /** The beat she holds after saying your name back: the first thing she knows about you. */
 const NAME_HOLD_MS = 700;
+/** In a demo, how long a pick is left open before it makes itself, as if someone read the cards first. */
+const DEMO_PICK_MS = 1400;
+/** In a demo, how long "Have her pick" waits to be pressed: she has just asked something bigger. */
+const DEMO_ASK_NAME_MS = 2500;
+/** In a demo the name is there at once; she still turns it over this long, as she would with a model. */
+const DEMO_NAMING_MS = 3500;
 
 /** What she last said, for a reload that lands mid-way with nothing on screen. */
 const RESUME: Record<Ask, string> = {
@@ -69,7 +76,7 @@ const PROBLEM: Record<Exclude<EarProblem, null>, string> = {
  * themselves. A restart picks up at the last saved step. It ends by turning
  * into the stage, so the one who asked is the one who is there.
  */
-export function Onboarding({ initial, voiceReady, listenReady, onDone }: Props) {
+export function Onboarding({ initial, voiceReady, listenReady, onDone, demo = null }: Props) {
   const { state, line, speak, replay, save, proposeName, finish } = useOnboarding(voiceReady, initial);
   const [alias, setAlias] = useState('');
   const [notes, setNotes] = useState('');
@@ -108,13 +115,16 @@ export function Onboarding({ initial, voiceReady, listenReady, onDone }: Props) 
   const hear = async (clip: Blob, mime: string) => {
     if (ask === 'alias') {
       const result = await api.hearAlias(clip, mime).catch(() => null);
-      if (result?.alias) setAlias(result.alias);
+      if (result?.alias && demo) commitName(result.alias);
+      else if (result?.alias) setAlias(result.alias);
       else setHeardNote(result?.said ? `Heard “${result.said}”, no name in it.` : "Didn't catch that.");
       return;
     }
     const result = await api.hear(clip, mime).catch(() => null);
     const text = result?.text.trim();
     if (!text) { setHeardNote("Didn't catch that."); return; }
+    // A demo takes what was said as sent: there is no one at the keyboard to send it.
+    if (demo) { send(text); return; }
     if (ask === 'notes') setNotes(text);
     else setOwnName(text.slice(0, 40));
   };
@@ -145,9 +155,19 @@ export function Onboarding({ initial, voiceReady, listenReady, onDone }: Props) 
     run().finally(() => { setBusy(false); setSaid(null); });
   };
 
+  /** In a demo she takes a moment before answering, as she does with a model behind her. */
+  const hold = () => {
+    if (!demo) return Promise.resolve();
+    const [min, max] = demo.replyDelayMs;
+    return new Promise(resolve => setTimeout(resolve, min + Math.random() * Math.max(0, max - min)));
+  };
+
   /** A name is settled, spoken or typed: she says it back and moves on. */
   const commitName = (name: string) => answer(async () => {
+    // A demo answer never went through the field; the name has to be kept for the goodbye all the same.
+    setAlias(name);
     setSaid(name);
+    await hold();
     await save('comfort', { alias: name });
     await speak(SCRIPT.nameEcho(name));
     await new Promise(resolve => setTimeout(resolve, NAME_HOLD_MS));
@@ -165,7 +185,7 @@ export function Onboarding({ initial, voiceReady, listenReady, onDone }: Props) 
     set(value);
     window.setTimeout(() => {
       setSaid(label);
-      answer(async () => { picking.current = false; await next(); });
+      answer(async () => { picking.current = false; await hold(); await next(); });
     }, PICK_MS);
   };
 
@@ -183,6 +203,7 @@ export function Onboarding({ initial, voiceReady, listenReady, onDone }: Props) 
 
   const commitNotes = (text: string) => answer(async () => {
     setSaid(text.trim() || null);
+    await hold();
     await save('name', { notes: text });
     await speak(text.trim() ? SCRIPT.notesEcho : SCRIPT.nameAsk);
     if (text.trim()) await speak(SCRIPT.nameAsk);
@@ -192,7 +213,10 @@ export function Onboarding({ initial, voiceReady, listenReady, onDone }: Props) 
   const askHerToName = () => answer(async () => {
     setNaming('thinking');
     // The server allows one proposal; null or a failure leaves naming to the user.
-    const response = await proposeName(alias.trim(), notes.trim()).catch(() => null);
+    const [response] = await Promise.all([
+      proposeName(alias.trim(), notes.trim()).catch(() => null),
+      demo && new Promise(resolve => setTimeout(resolve, DEMO_NAMING_MS)),
+    ]);
     if (response?.name) {
       setProposal({ name: response.name, reason: response.reason ?? '' });
       // Her suggestion goes straight into the field: from here it is a name to
@@ -225,6 +249,7 @@ export function Onboarding({ initial, voiceReady, listenReady, onDone }: Props) 
     if (!name) return;
     setClosing(true);
     ear.cancel();
+    await hold();
     await speak(SCRIPT.finalEcho(alias.trim() || 'you', name));
     setArriving(true);
     await skippable(ARRIVAL.fadeMs + ARRIVAL.pauseMs + ARRIVAL.curtainMs);
@@ -283,6 +308,35 @@ export function Onboarding({ initial, voiceReady, listenReady, onDone }: Props) 
     else if (ask === 'notes') commitNotes(text);
     else void close(text);
   };
+
+  /** → in a demo: the answer the preset gives here, or the one already in the field. */
+  const advance = () => {
+    if (!demo) return;
+    if (phase === 'asleep') { begin(); return; }
+    if (!yourMove) return;
+    if (ask === 'alias') commitName(alias.trim() || demo.alias);
+    else if (ask === 'comfort') commitComfort(demo.comfort);
+    else if (ask === 'rhythm') commitRhythm(demo.rhythm);
+    else if (ask === 'notes') commitNotes(notes.trim() || demo.notes);
+    else if (ask === 'name' && naming === 'ask') askHerToName();
+    else if (ask === 'name') void close(ownName.trim() || demo.herName);
+  };
+  const advanceRef = useRef(advance);
+  advanceRef.current = advance;
+  useEffect(() => {
+    if (!demo) return;
+    const onNext = () => advanceRef.current();
+    window.addEventListener(MEETING_NEXT, onNext);
+    return () => window.removeEventListener(MEETING_NEXT, onNext);
+  }, [demo]);
+  // Nothing is said to a card or to "Have her pick": in a demo they take themselves.
+  const picksItself = Boolean(demo) && yourMove && (ask === 'comfort' || ask === 'rhythm' || (ask === 'name' && naming === 'ask'));
+  useEffect(() => {
+    if (!picksItself) return;
+    const timer = window.setTimeout(() => advanceRef.current(), ask === 'name' ? DEMO_ASK_NAME_MS : DEMO_PICK_MS);
+    return () => window.clearTimeout(timer);
+  }, [picksItself, ask]);
+
   const orb = (
     <Orb key={`${ask}-${naming}`} ear={ear.ear} canSpeak={canListen} disabled={!orbShown || !yourMove}
       // Full size through the arrival, as the stage puts it down at full size.

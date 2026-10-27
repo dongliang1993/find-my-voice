@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useReducer, useRef } from 'react';
-import type { ChatMessage, ClientEvent, CompanionStatus, Paper, PaperOp, ServerEvent } from '@shared/protocol';
+import type { ChatMessage, ClientEvent, CompanionStatus, DemoAction, DemoCue, DemoMeeting, Paper, PaperOp, ServerEvent } from '@shared/protocol';
 import { api } from '@/lib/api';
 import { audio } from '@/lib/audio';
 
@@ -18,6 +18,9 @@ export type SpeechLines = Record<string, SpeechLine[]>;
  */
 export type PaperEdit = { seq: number; before: Paper; after: Paper; ops: PaperOp[] };
 
+/** Demo mode: where the script is and the time it plays at. Null outside a demo. */
+export type DemoState = { scene: number; beat: number; clock: string | null; hideCursor: boolean; meeting: DemoMeeting; letters: string[] };
+
 type State = {
   messages: ChatMessage[]; status: CompanionStatus; connection: Connection;
   notices: Notice[]; reached: Reached | null; lines: SpeechLines;
@@ -33,6 +36,9 @@ type State = {
   settingsStamp: number;
   /** The paper last saved, for the moment it goes onto the list to be seen. */
   saved: { seq: number; paperId: string } | null;
+  demo: DemoState | null;
+  /** The last thing the script had the page do, numbered so the same one twice still lands. */
+  cue: { seq: number; cue: DemoCue } | null;
 };
 
 type Action =
@@ -101,6 +107,10 @@ function reducer(state: State, action: Action): State {
     case 'stage': return { ...state, stage: event.paperId };
     case 'resting': return { ...state, resting: event.until };
     case 'settings': return { ...state, settingsStamp: state.settingsStamp + 1 };
+    case 'demo': {
+      const { cue, type: _type, ...demo } = event;
+      return { ...state, demo, cue: cue ? { seq: (state.cue?.seq ?? 0) + 1, cue } : state.cue };
+    }
     default: return state;
   }
 }
@@ -111,7 +121,7 @@ const RETRY_MS = [500, 1000, 2000, 4000, 8000];
 export function useChat() {
   const [state, dispatch] = useReducer(reducer, {
     messages: [], status: 'idle', connection: 'connecting', notices: [], reached: null, lines: {}, papers: [], edits: [],
-    stage: null, resting: null, settingsStamp: 0, saved: null,
+    stage: null, resting: null, settingsStamp: 0, saved: null, demo: null, cue: null,
   });
   const socket = useRef<WebSocket | null>(null);
   const pending = useRef<ClientEvent[]>([]);
@@ -192,5 +202,9 @@ export function useChat() {
     emit({ type: 'wake' });
   }, [emit]);
 
-  return { ...state, send, interrupt, dismiss, setReading, wake };
+  const demoAction = useCallback((action: DemoAction, scene?: number) => {
+    emit({ type: 'demo', action, ...(scene ? { scene } : {}) });
+  }, [emit]);
+
+  return { ...state, send, interrupt, dismiss, setReading, wake, demoAction };
 }

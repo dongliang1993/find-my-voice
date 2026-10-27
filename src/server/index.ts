@@ -3,6 +3,7 @@ import { serve } from '@hono/node-server';
 import { defaultDataDir, packageRoot } from './config.js';
 import { App } from './app.js';
 import { createHttp } from './http.js';
+import { loadDemo } from './demo/script.js';
 import { openExternal } from './open.js';
 
 const args = new Set(process.argv.slice(2));
@@ -18,7 +19,9 @@ function listen(app: App, port: number) {
   return server;
 }
 
-const app = new App(defaultDataDir());
+// Demo mode, for recording: set by `npm run demo`, which also points the data at a home of its own.
+const demo = process.env.FMV_DEMO ? loadDemo(process.env.FMV_DEMO, process.env.FMV_DEMO_NAME || 'you') : undefined;
+const app = new App(defaultDataDir(), undefined, { demo });
 // The desktop shell finds a free port itself and passes it here; standalone
 // runs keep using the configured one.
 const port = Number(process.env.FMV_PORT) || app.settings.server.port;

@@ -45,11 +45,11 @@ const SOURCE_LABEL: Record<BrainSource, Said> = {
 const PAUSE_MS = 600;
 const SAVED_MS = 2000;
 
-type Page = 'appearance' | 'brain' | 'voice' | 'her';
+export type Page = 'appearance' | 'brain' | 'voice' | 'her';
 type Brain = { preset: Preset; baseUrl: string; apiKey: string; model: string };
 type Identity = { content: string; sha256: string | null };
 
-type Props = { status: AppStatus; stamp: number; frame: Frame | null; presence: Presence; onClose: () => void };
+type Props = { status: AppStatus; stamp: number; frame: Frame | null; presence: Presence; onClose: () => void; initialPage?: Page };
 
 /**
  * Settings, on the same paper as her letters: a sheet slid out of the
@@ -57,13 +57,13 @@ type Props = { status: AppStatus; stamp: number; frame: Frame | null; presence: 
  * There is no save button — every change keeps itself, and a quiet
  * 「已保存」 beside the close button says so.
  */
-export function SettingsPanel({ status, stamp, frame, presence, onClose }: Props) {
+export function SettingsPanel({ status, stamp, frame, presence, onClose, initialPage }: Props) {
   const word = useWords();
   const ui = useUi();
   const say = useSay();
   const setLocale = useLocale(store => store.setLanguage);
   const refreshStatus = useGlobal(store => store.refreshStatus);
-  const [page, setPage] = useState<Page>(status.brain.ready ? (status.voice.ready ? 'her' : 'voice') : 'brain');
+  const [page, setPage] = useState<Page>(initialPage ?? (status.brain.ready ? (status.voice.ready ? 'her' : 'voice') : 'brain'));
   const [settings, setSettings] = useState<PublicSettings | null>(null);
   const [brain, setBrain] = useState<Brain>({ preset: PRESETS[0]!, baseUrl: '', apiKey: '', model: '' });
   const [voice, setVoice] = useState<VoiceDraft>(() => draftFrom(null));

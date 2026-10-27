@@ -8,7 +8,7 @@ const BYTES_PER_SECOND = PCM_SAMPLE_RATE * 2;
 // Merge short lines so a "嗯。" does not become its own request; cap length so
 // the first sentence starts playing quickly. Her first words wait on the first
 // chunk alone, so that one is cut shorter still, at a comma when it can be.
-const SPLIT = { minChars: 12, maxChars: 80, firstMaxChars: 24 };
+export const SPLIT = { minChars: 12, maxChars: 80, firstMaxChars: 24 };
 const SAFE_ID = /^[a-zA-Z0-9-]{1,80}$/;
 
 export type VoicePipelineOptions = {

@@ -1,9 +1,9 @@
 // Starts the app in demo mode, for recording the walkthrough: her part comes
 // from scripts/demo.json, in a data home of its own.
 //
-//   npm run demo -- --name 东亮            resume where the last run left off
-//   npm run demo -- --name 东亮 --fresh    start over from the first meeting
-//   npm run demo -- --name 东亮 --web      in the browser instead of the desktop window
+//   npm run demo -- --name Leon            resume where the last run left off
+//   npm run demo -- --name Leon --fresh    start over from the first meeting
+//   npm run demo -- --name Leon --web      in the browser instead of the desktop window
 //
 // Keys in the page: → next, ← back one step, ⌥R the scene again, ⌥1–⌥5 a scene.
 import { spawn } from 'node:child_process';
@@ -17,7 +17,8 @@ import { createTtsProvider } from '../src/server/voice/registry.ts';
 
 const { values } = parseArgs({
   // pnpm hands the `--` separator through; npm does not.
-  args: process.argv.slice(2).filter(arg => arg !== '--'), options: { name: { type: 'string' }, fresh: { type: 'boolean' }, web: { type: 'boolean' }, script: { type: 'string' } } });
+  args: process.argv.slice(2).filter(arg => arg !== '--'), options: { name: { type: 'string' }, fresh: { type: 'boolean' }, web: { type: 'boolean' }, script: { type: 'string' } }
+});
 const home = demoHome();
 prepareDemoHome(home, { fresh: values.fresh });
 const name = values.name || loadSettings(home).companion.userName;

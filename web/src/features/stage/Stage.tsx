@@ -323,6 +323,7 @@ export function Stage({
     <div ref={room} {...ambient} data-timelapse={lapsing || undefined}
       className="relative isolate flex h-dvh items-stretch justify-center overflow-hidden bg-(--base) pt-(--titlebar) text-(--ink) transition-colors duration-[2500ms] sm:items-center sm:p-8">
       {/* The room breathes while she speaks, as it did in the first meeting. */}
+      <div className="room-light pointer-events-none absolute inset-0 -z-10" aria-hidden="true" />
       <div className="glow pointer-events-none absolute inset-x-0 top-0 -z-10 h-[70%]" aria-hidden="true" />
       {/* The first meeting's card, exactly: a coral panel over a cream mat, both
           measured by the same variables, so moving between the two never resizes. */}
@@ -331,7 +332,8 @@ export function Stage({
         animate={away ? (still ? RECEDED_STILL : RECEDED) : FORWARD} transition={still ? APP_SWITCH_STILL : APP_SWITCH}
         className="flex h-full w-full max-w-[880px] flex-col sm:h-auto">
       <main className="on-stage relative flex h-full w-full max-w-[880px] flex-col overflow-hidden bg-(--her) text-white transition-[background-color,filter] duration-[2500ms] sm:h-auto sm:rounded-[3px] sm:shadow-(--panel-shadow) sm:ring-1 sm:ring-hairline"
-        style={{ filter: `brightness(${visual.herBrightness})` }}>
+        // Dimmed for the night, saturation held up with it: dark and warm, not dark and grey.
+        style={{ filter: `brightness(${visual.herBrightness})${asleep ? ' saturate(1.15)' : ''}` }}>
         {/* Laid over the panel, not in the flow: the card's height is the panel
             plus the mat, exactly as in the first meeting. */}
         {/* With a paper on the right, the history button keeps to the red side, against the paper's edge. */}

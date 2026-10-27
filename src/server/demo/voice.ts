@@ -42,6 +42,13 @@ export class DemoVoice implements TtsProvider {
     renameSync(`${path}.part`, path);
   }
 
+  /** A take recorded elsewhere (a 24 kHz mono 16-bit WAV), kept as this sentence's. */
+  putWav(sentence: string, wav: Buffer) {
+    const at = wav.indexOf('data');
+    if (at < 0) throw new Error('not a WAV: no data chunk');
+    this.put(sentence, wav.subarray(at + 8, at + 8 + wav.readUInt32LE(at + 4)));
+  }
+
   private letterPath(paragraphs: string[]) { return this.path(`letter\n${paragraphs.join('\n')}`); }
 
   /** Her reading of a whole letter, as one take: it is played as written, not sentence by sentence. */

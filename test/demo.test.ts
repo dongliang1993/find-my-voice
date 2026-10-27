@@ -36,7 +36,52 @@ const script = (name = 'Lin'): DemoScript => parseDemo(SCRIPT, name);
 test('the checked-in demo script parses', () => {
   const demo = loadDemo(join(import.meta.dirname, '../scripts/demo.json'), 'Lin');
   assert.ok(demo.scenes.length > 1);
-  assert.ok(demo.scenes[0]!.onboarding);
+  assert.ok(demo.scenes.some(s => s.onboarding), 'one scene is the first meeting');
+});
+
+test('an opening shot before the first meeting: set at its own hour, the meeting dated by its own clock, then the meeting from nothing', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'fmv-demo-'));
+  writeFileSync(join(dir, 'config.json'), JSON.stringify({ voice: { provider: 'fixture' } }));
+  const opened = parseDemo({
+    ...SCRIPT, timing: { replyDelayMs: 0, pauseAfterBeatMs: 0 },
+    scenes: [{ id: 0, name: 'open', clock: '2026-03-05T23:40:00+08:00', beats: [{ type: 'her', text: 'I wrote you something.' }] }, ...SCRIPT.scenes],
+  }, 'Lin');
+  const app = new App(dir, () => {}, { demo: opened });
+  await app.demo!.jump(0);
+  assert.ok(app.store.onboarding().completedAt, 'the opening is on the stage, not in the first meeting');
+  assert.match(app.store.onboarding().completedAt!, /^2026-03-01/, 'met on the meeting\'s day, not the opening\'s');
+  await app.demo!.next();
+  do await new Promise(r => setTimeout(r, 50)); while (app.chat.busy);
+  await app.demo!.next();
+  assert.equal(app.demo!.state().scene, 2);
+  assert.equal(app.store.onboarding().completedAt, null, 'into the meeting, from nothing');
+  await app.close();
+});
+
+test('her goodbye with rest: she says it, then rests', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'fmv-demo-'));
+  writeFileSync(join(dir, 'config.json'), JSON.stringify({ voice: { provider: 'fixture' } }));
+  const night = parseDemo({
+    ...SCRIPT, timing: { replyDelayMs: 0, pauseAfterBeatMs: 0 },
+    scenes: [SCRIPT.scenes[0], { id: 2, name: 'night', beats: [{ type: 'user', userText: '晚安' }, { type: 'her', text: 'Goodnight, {name}.', rest: true }] }],
+  }, 'Lin');
+  const app = new App(dir, () => {}, { demo: night });
+  await app.demo!.jump(1);
+  await app.demo!.next();
+  do await new Promise(r => setTimeout(r, 50)); while (app.chat.busy);
+  assert.equal(app.store.recent().at(-1)?.text, 'Goodnight, Lin.');
+  assert.equal(app.chat.resting, true);
+  await app.close();
+});
+
+test('a take of its own is put in the cache for its sentence', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'fmv-take-'));
+  const voice = new DemoVoice(dir, () => { throw new Error('no live voice'); });
+  const pcm = Buffer.from([1, 0, 2, 0]);
+  const wav = Buffer.concat([Buffer.from('RIFF\0\0\0\0WAVEfmt '), Buffer.alloc(20), Buffer.from('data'), Buffer.from([4, 0, 0, 0]), pcm]);
+  voice.putWav('I wrote you something.', wav);
+  assert.ok(voice.has('I wrote you something.'));
+  assert.throws(() => voice.putWav('x', Buffer.from('nothing here')), /WAV/);
 });
 
 test('{name} is filled in everywhere', () => {

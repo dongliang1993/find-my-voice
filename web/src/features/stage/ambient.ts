@@ -8,20 +8,21 @@ interface Keyframe { hour: number; her: string; base: string }
 /**
  * The light through the day. Night is nearly brown, afternoon is the coral's
  * most saturated, and the two are far enough apart that the change is felt
- * rather than noticed. Dusk goes down through peach and terracotta: straight
+ * rather than noticed. Night keeps its saturation as it darkens: a deep
+ * wine red, not a faded brick. Dusk goes down through peach and terracotta: straight
  * from cream to brown, the room passed through grey around seven.
  *
  * index.html repeats where the room crosses into dark (19:40 to 3:24) for the
  * first paint; moving a base stop moves those times.
  */
 const KEYFRAMES: Keyframe[] = [
-  { hour: 1, her: '#7A3A33', base: '#1F1513' },
+  { hour: 1, her: '#86322A', base: '#1F1513' },
   { hour: 6, her: '#D9644A', base: '#F7EEE6' },
   { hour: 11, her: '#D2513F', base: '#F5ECE3' },
   { hour: 17.5, her: '#D9493A', base: '#F6E6DA' },
   { hour: 19, her: '#D44A38', base: '#F0C9A6' },
   { hour: 20, her: '#B4473A', base: '#A85A40' },
-  { hour: 21, her: '#9E4136', base: '#2B1D1A' },
+  { hour: 21, her: '#9E3A2E', base: '#2B1D1A' },
 ];
 
 /** Mood shifts the coral on the HSL wheel: hue°, saturation%, lightness%. */

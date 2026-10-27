@@ -254,6 +254,20 @@
    * her mood into the bloom, so night needs no rule of its own.
    */
   /* A floor under the halo, so a screen where she has not spoken yet (Begin) is lit like the ones after it. */
+  /*
+   * At night the room is not black: the stage's light spills onto the walls
+   * around it and falls off into the corners. Mixed from the room's own
+   * colour, so it follows the hour (and a timelapse) as the room does.
+   */
+  .room-light {
+    opacity: 0;
+    transition: opacity 2500ms;
+    background: radial-gradient(ellipse 70% 70% at 50% 50%,
+      color-mix(in srgb, var(--base) 65%, #5a372e) 0%, transparent 55%,
+      color-mix(in srgb, var(--base) 70%, black) 100%);
+  }
+  [data-dark='true'] > .room-light { opacity: 1; }
+
   .glow {
     background: radial-gradient(70% 55% at 50% 0%,
       color-mix(in srgb, var(--her, var(--spiral)) calc(max(var(--voice), 0.35) * 28%), transparent), transparent 70%);
@@ -348,6 +362,12 @@
     --orb-edge: rgb(255 255 255 / 0.4);
     --orb-text: #fff;
     --ring: rgb(255 255 255 / 0.7);
+  }
+  /* At night the disc is the brightest thing in the room: down to a warm, dimmer cream. */
+  [data-dark='true'] .on-stage {
+    --orb: rgb(230 211 203 / 0.85);
+    --orb-solid: #e6d3cb;
+    --orb-glow: 0 6px 14px -12px rgb(230 211 203 / 0.35);
   }
   /* The circle breathes while it waits. Only transform, so it never re-lays out. */
   .orb-breathe { animation: orb-breathe 4.2s ease-in-out infinite; }

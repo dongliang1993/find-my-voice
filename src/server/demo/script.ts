@@ -29,6 +29,10 @@ const beat = z.discriminatedUnion('type', [
     proactive: z.boolean().optional(),
     /** Baked into the cached take by the voice script. */
     volume: z.number().min(0).max(2).optional(),
+    /** A take recorded already, under web/public (one sentence): used as is, never synthesized. */
+    audio: z.string().optional(),
+    /** Her goodbye: once it is said she rests, and the room goes down. */
+    rest: z.boolean().optional(),
     rate: z.number().int().min(-50).max(100).optional(),
   }),
   z.object({ type: z.literal('user'), userText: z.string().min(1) }),
@@ -63,6 +67,8 @@ const scriptSchema = z.object({
     papers: z.array(z.object({
       id: z.string(), title: z.string(), createdAt: z.iso.datetime({ offset: true }),
       savedAt: z.iso.datetime({ offset: true }).optional(), blocks: z.array(block),
+      /** A letter: the voice script makes her reading of it, and the paper gets a way to play it. */
+      read: z.boolean().optional(),
     })).default([]),
   }),
   timing: z.object({
@@ -94,6 +100,9 @@ export function parseDemo(raw: unknown, name: string): DemoScript {
 }
 
 export const loadDemo = (path: string, name: string) => parseDemo(JSON.parse(readFileSync(path, 'utf8')), name);
+
+/** The scene that is the first meeting; the one before it, if any, is an opening shot. */
+export const meetingIndex = (script: DemoScript) => script.scenes.findIndex(s => s.onboarding);
 
 /** Her lines and her papers run on from one another without a key press. */
 export const isHers = (beat: DemoBeat | undefined) => beat?.type === 'her' || beat?.type === 'paper';
@@ -162,14 +171,21 @@ export function herLines(script: DemoScript) {
   return script.scenes.flatMap(scene => scene.beats.flatMap(beat => (beat.type === 'her' ? [beat] : [])));
 }
 
-/** The papers she reads aloud, with what she reads: every paragraph, the title left out. */
+/** The papers she reads aloud, with what she reads: every paragraph, the title left out.
+ * A preset paper joins them when the script says `read` on it — written ahead of the
+ * recording, it still gets her reading. */
 export function letters(script: DemoScript) {
-  return script.scenes.flatMap(scene => scene.beats.flatMap(beat => {
-    const cue = beat.type === 'her' || beat.type === 'paper' ? beat.paper : undefined;
-    if (cue?.action !== 'create' || !cue.read) return [];
-    const paragraphs = cue.blocks.flatMap(b => (typeof b.text === 'string' && b.text.trim() ? [b.text.trim()] : []));
-    return [{ id: cue.id, paragraphs }];
-  }));
+  // Blocks stay loose (the paper schema checks them), so this reads one by its `text`.
+  const ofCue = (id: string, blocks: readonly { [key: string]: unknown }[], read: boolean) =>
+    read ? [{ id, paragraphs: blocks.flatMap(b => (typeof b.text === 'string' && b.text.trim() ? [b.text.trim()] : [])) }] : [];
+  return [
+    ...script.preset.papers.flatMap(p => ofCue(p.id, p.blocks, Boolean(p.read))),
+    ...script.scenes.flatMap(scene => scene.beats.flatMap(beat => {
+      const cue = beat.type === 'her' || beat.type === 'paper' ? beat.paper : undefined;
+      if (cue?.action !== 'create') return [];
+      return ofCue(cue.id, cue.blocks, Boolean(cue.read));
+    })),
+  ];
 }
 
 /** How long she waits this time before she answers. */

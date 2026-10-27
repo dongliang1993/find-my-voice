@@ -2,9 +2,9 @@
 // recording plays them instead of synthesizing live. Run it again to try a
 // line once more until the reading is the one you want.
 //
-//   npm run demo:voice -- --name 东亮              every line that has no take yet
-//   npm run demo:voice -- --name 东亮 brave        again: lines containing "brave"
-//   npm run demo:voice -- --name 东亮 --force      again: every line
+//   npm run demo:voice -- --name Leon              every line that has no take yet
+//   npm run demo:voice -- --name Leon brave        again: lines containing "brave"
+//   npm run demo:voice -- --name Leon --force      again: every line
 import { resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 import { PCM_SAMPLE_RATE } from '../src/shared/protocol.ts';

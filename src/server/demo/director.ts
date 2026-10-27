@@ -2,7 +2,8 @@
 // the clock the scene is set at, and sets the data up the way each scene
 // expects it, so any scene can be recorded again on its own.
 import { randomUUID } from 'node:crypto';
-import { rmSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import type { Brain, BrainSink } from '../brain/types.js';
 import { streamPaper } from '../brain/scripted.js';
 import type { ChatService } from '../chat/service.js';
@@ -12,11 +13,14 @@ import { toBlocks } from '../papers/schema.js';
 import { firstIdentity, readProfileDocument } from '../profile/profile.js';
 import type { DemoCue, ServerEvent } from '../../shared/protocol.js';
 import {
-  bareBlocks, blockIds, clockTime, languageAt, letters, mapOps, papersBefore, replyDelay, runEnd, stops,
+  bareBlocks, blockIds, clockTime, languageAt, letters, mapOps, meetingIndex, papersBefore, replyDelay, runEnd, stops,
   type DemoBeat, type DemoScript, type PaperCue,
 } from './script.js';
 import { pcmToWav } from '../voice/provider.js';
-import type { DemoVoice } from './voice.js';
+import { demoSentences, type DemoVoice } from './voice.js';
+
+/** Where a beat's own `audio` lives. */
+const PUBLIC = resolve(import.meta.dirname, '../../../web/public');
 
 export type DemoHost = {
   readonly dataDir: string;
@@ -51,8 +55,19 @@ export class DemoDirector {
       for (const beat of scene.beats) {
         const cue = beat.type === 'her' || beat.type === 'paper' ? beat.paper : undefined;
         if (cue?.action === 'create') this.blocks.set(cue.id, blockIds(cue));
+        if (beat.type === 'her' && beat.audio) this.fixedTake(beat.text, beat.audio);
       }
     }
+  }
+
+  /** A line with a take of its own: it goes in the cache, so the voice pipeline plays it like any other. */
+  private fixedTake(text: string, audio: string) {
+    const path = resolve(PUBLIC, audio.replace(/^\//, ''));
+    const sentences = demoSentences(text);
+    if (sentences.length !== 1) { this.host.log(`[demo] "${text}" is ${sentences.length} sentences; one take cannot be split — synthesizing it`); return; }
+    if (!existsSync(path)) { this.host.log(`[demo] no file at ${path} for "${text}"`); return; }
+    try { this.voice.putWav(sentences[0]!, readFileSync(path)); }
+    catch (error) { this.host.log(`[demo] ${audio}: ${(error as Error).message}`); }
   }
 
   /** Picks up where the last run left off, or sets the first scene up when there was none: the server restarts on every save. */
@@ -161,6 +176,8 @@ export class DemoDirector {
     const beat = this.beats[this.beat];
     if (!beat) {
       if (!this.script.scenes[this.scene + 1]) return;
+      // From an opening shot into the first meeting: it starts from nothing, as a first meeting does.
+      if (this.script.scenes[this.scene + 1]!.onboarding) { await this.jump(this.scene + 1); return; }
       this.enter(this.scene + 1);
       this.emit();
       // A scene that opens on something she or the page does starts with the same press.
@@ -206,11 +223,12 @@ export class DemoDirector {
     const memory = days.map(day => `## ${day}\n${preset.memory.filter(m => m.date === day).map(m => `- ${m.text}`).join('\n')}`).join('\n\n');
     writeFileSync(readProfileDocument(dataDir, 'memory').path, `# 关于你\n\n${memory}\n`, { mode: 0o600 });
 
-    const met = scenes[0]?.clock ?? new Date().toISOString();
+    // The first meeting's own clock, not the first scene's: an opening shot may be set days later.
+    const met = scenes[meetingIndex(this.script)]?.clock ?? scenes[0]?.clock ?? new Date().toISOString();
     const { comfort, rhythm, onMind } = preset.onboardingAnswers;
     const identity = readProfileDocument(dataDir, 'identity').path;
     const settings = { ui: { language: preset.uiLanguage }, initiative: { mode: 'off' as const } };
-    if (index === 0) {
+    if (scenes[index]?.onboarding) {
       rmSync(identity, { force: true });
       store.saveOnboarding(0, {}, false);
       this.host.applySettings({ ...settings, companion: { userName: '', language: languageAt(this.script, 0) } });
@@ -277,6 +295,8 @@ export class DemoDirector {
       sleep(speaking),
       cue && sleep(offset).then(() => (isStopped() ? undefined : this.paper(cue, sink, isStopped))),
     ]);
+    // Her goodbye said: she rests. The page waits for her voice to finish before the room goes down.
+    if (beat.rest && !isStopped()) await ask(respond => sink({ type: 'rest', respond }));
     await sleep(pause);
   }
 

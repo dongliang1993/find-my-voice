@@ -29,7 +29,7 @@
     "dev:server": "tsx watch src/server/index.ts --no-open",
     "onboard:reset": "node scripts/onboard-reset.mjs",
     "onboard:wipe": "node scripts/onboard-reset.mjs --wipe",
-    "demo": "tsx scripts/demo.ts",
+    "demo": "tsx scripts/demo.ts -- --name Leon --fresh",
     "demo:voice": "tsx scripts/pregen-demo.ts",
     "dev:web": "vite",
     "build": "npm run typecheck && vite build && node scripts/build-server.mjs",

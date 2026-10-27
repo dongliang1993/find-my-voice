@@ -7,7 +7,7 @@
     "herNameReason": "It's soft, and a little like a friend who stays up late with you.",
     "replyLanguage": "en",
     "uiLanguage": "zh",
-    "hideCursor": false,
+    "hideCursor": true,
     "onboardingAnswers": {
       "comfort": "listen",
       "rhythm": "night",
@@ -30,7 +30,7 @@
     "papers": [
       {
         "id": "paper_tomorrow",
-        "title": "Tomorrow",
+        "title": "Tomorrow to-dos",
         "createdAt": "2026-10-23T22:10:00+08:00",
         "savedAt": "2026-10-23T22:10:00+08:00",
         "blocks": [
@@ -56,7 +56,8 @@
             "type": "paragraph",
             "text": "Natasha"
           }
-        ]
+        ],
+        "signature": "Natasha"
       }
     ],
     "_note": "papers 是已保存的文档；落款就是最后一段她的名字，页面自动渲染成「— Natasha」。"
@@ -74,6 +75,18 @@
     "paperWritingCharsPerSecond": 16
   },
   "scenes": [
+    {
+      "id": 0,
+      "name": "开头",
+      "clock": "2026-10-23T20:30:00+08:00",
+      "beats": [
+        {
+          "type": "her",
+          "text": "I've been thinking about what you told me, the first day we met. I wrote you something."
+        }
+      ],
+      "_note": "倒叙开头：取自第 5 场的深夜，光线和结尾一致。"
+    },
     {
       "id": 1,
       "name": "第一次见面（onboarding）",
@@ -98,7 +111,7 @@
           "paper": {
             "action": "create",
             "id": "paper_rainy",
-            "title": "Rainy Saturday",
+            "title": "Rainy Saturday Recommendations",
             "startAfterText": "I wrote a few down for you.",
             "blocks": [
               {
@@ -239,9 +252,9 @@
         },
         {
           "type": "user",
-          "userText": "切换回去吧"
+          "userText": "再切回去吧，我现在想要练习一下口语。"
         },
-       {
+        {
           "type": "her",
           "text": "Ok.",
           "setting": {
@@ -256,7 +269,7 @@
       "beats": [
         {
           "type": "timelapse",
-          "from": "2026-10-25T06:00:00+08:00",
+          "from": "2026-10-25T16:00:00+08:00",
           "to": "2026-10-25T23:40:00+08:00",
           "durationMs": 10000,
           "hideChrome": true
@@ -273,7 +286,7 @@
         },
         {
           "type": "her",
-          "text": "The first day we met, you told me you were anxious. That what you were making might not be fancy enough, and you weren't sure you should make it at all. I've been thinking about that. I wrote you something.",
+          "text": "I've been thinking about what you told me, the first day we met. I wrote you something.",
           "proactive": true,
           "mood": "longing"
         },
@@ -317,18 +330,19 @@
               }
             ]
           },
-          "_note": "她写的东西直接出现在舞台右侧，不需要再「打开」。"
+          "_note": "她一边写一边念整封信，书写进度跟随朗读；最后一句 That was the brave part. 写完时落款淡入"
+        },
+        {
+          "type": "user",
+          "userText": "晚安，Natasha。"
         },
         {
           "type": "her",
-          "text": "That was the brave part.",
-          "volume": 0.85
+          "text": "Goodnight, {name}.",
+          "rest": true,
+          "_note": "说完后房间慢慢暗下来，片子收在这里。"
         }
-      ],
-      "setup": {
-        "replyLanguage": "en",
-        "_note": "镜头外：第 3 场切成了中文，开拍前在设置里切回英文。"
-      }
+      ]
     }
   ]
 }

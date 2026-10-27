@@ -31,6 +31,10 @@ const PAD = 12;
 /** Each card behind sits this much up and right of the one before it, and this much smaller. */
 const STACK_PX = 6;
 const SHRINK = 0.92;
+/** The share of the front card's colour a card behind keeps: 60% by day, 50% at night.
+ * The style itself reads --sw-behind (turned with the hour); this is its day figure,
+ * for draw's visibility test. */
+const BEHIND = 0.6;
 /** Where a card passed by the hand goes: out toward the corner, per step. */
 const PASS_X = 44;
 const PASS_Y = 28;
@@ -109,6 +113,8 @@ export function Switcher({ apps, current, rest, onOpen, still = false, hidden = 
     hushed: false,
     raf: 0, last: 0,
     tilt: { x: 0, y: 0 }, hover: { x: 0, y: 0, on: false },
+    /** The stack warming under the hand, eased like the tilt; at 0 the class colours stand. */
+    warm: 0,
     enteredAt: Number.POSITIVE_INFINITY,
     gesture: null as Gesture | null,
     quiet: 0 as ReturnType<typeof setTimeout> | 0,
@@ -135,30 +141,47 @@ export function Switcher({ apps, current, rest, onOpen, still = false, hidden = 
     cards.current.forEach((card, i) => {
       if (!card) return;
       const d = i - shown;
-      let tx: number, ty: number, scale: number, opacity: number, blur: number;
+      let tx: number, ty: number, scale: number, blur: number, o: number, oCss: string;
       if (d >= 0) {
         tx = STACK_PX * d;
         ty = -STACK_PX * d;
         scale = SHRINK ** d;
-        opacity = Math.max(0, 1 - 0.18 * Math.min(d, 2) - Math.max(0, d - 2));
         blur = Math.min(d, 3) * 1.2;
+        // The cards behind keep one share of the front card's colour, written as a
+        // calc on --sw-behind so the hour turns them where they rest, without a
+        // redraw. `o` is its day figure, for the visibility test alone.
+        const fade = Math.max(0, 1 - Math.max(0, d - 2));
+        o = d < 1 ? 1 - (1 - BEHIND) * d : BEHIND * fade;
+        oCss = d < 1
+          ? `calc(1 - (1 - var(--sw-behind, ${BEHIND})) * ${d.toFixed(3)})`
+          : `calc(var(--sw-behind, ${BEHIND}) * ${fade.toFixed(3)})`;
       } else {
         tx = PASS_X * d;
         ty = -PASS_Y * d;
         scale = 1 - 0.05 * d;
-        opacity = Math.max(0, 1 + 1.8 * d);
         blur = -d * 2;
+        o = Math.max(0, 1 + 1.8 * d);
+        oCss = o.toFixed(3);
       }
       const near = Math.max(0, 1 - Math.abs(d));
       ty -= 2 * lift * near;
       const tilt = near > 0.5 ? `perspective(400px) rotateX(${(-s.tilt.y * 3).toFixed(2)}deg) rotateY(${(s.tilt.x * 3).toFixed(2)}deg) ` : '';
       card.style.transform = `translate(${tx.toFixed(2)}px, ${ty.toFixed(2)}px) ${tilt}scale(${scale.toFixed(4)})`;
-      card.style.opacity = opacity.toFixed(3);
+      card.style.opacity = oCss;
       card.style.filter = blur > 0.05 ? `blur(${blur.toFixed(2)}px)` : 'none';
       card.style.zIndex = String(100 - Math.round(d * 10));
-      card.style.visibility = opacity < 0.01 ? 'hidden' : 'visible';
+      card.style.visibility = o < 0.01 ? 'hidden' : 'visible';
+      // The shadow holds the card up off the room; as it lifts, the shadow lifts with it.
+      // The hairline ring leads the shadow — composed here, not as a class: this
+      // inline box-shadow is written every frame and would override one.
       const l = lift * near;
-      card.style.boxShadow = `0 ${(3 + 9 * l).toFixed(1)}px ${(8 + 18 * l).toFixed(1)}px -6px rgb(60 20 10 / ${(0.18 + 0.12 * l).toFixed(3)})`;
+      card.style.boxShadow = `0 0 0 1px var(--sw-ring), 0 ${(6 + 8 * l).toFixed(1)}px ${(16 + 12 * l).toFixed(1)}px ${(-8 * l).toFixed(1)}px rgb(var(--sw-shadow-rgb) / calc(var(--sw-shadow-a) + ${(0.12 * l).toFixed(3)}))`;
+      // Under the hand the card leans to its hover colour, the icon with it. By day
+      // the hover icon is the card's own, so that mix changes nothing.
+      const warm = s.warm * near;
+      const mix = (a: string, b: string) => `color-mix(in srgb, var(${a}), var(${b}) ${(warm * 100).toFixed(1)}%)`;
+      card.style.backgroundColor = warm > 0.004 ? mix('--sw-card', '--sw-hover-card') : '';
+      card.style.color = warm > 0.004 ? mix('--sw-icon', '--sw-hover-icon') : '';
       const shine = shines.current[i];
       if (shine) {
         shine.style.opacity = (speed * near * 0.8).toFixed(3);
@@ -193,6 +216,9 @@ export function Switcher({ apps, current, rest, onOpen, still = false, hidden = 
     const goal = s.hover.on ? s.hover : { x: 0, y: 0 };
     s.tilt.x += (goal.x - s.tilt.x) * 0.18;
     s.tilt.y += (goal.y - s.tilt.y) * 0.18;
+    // The stack warms under the hand and cools away from it, eased with the tilt.
+    const warmGoal = s.hover.on ? 1 : 0;
+    s.warm += (warmGoal - s.warm) * 0.18;
 
     const last = live.current.apps.length - 1;
     const nearest = Math.max(0, Math.min(last, Math.round(s.x)));
@@ -203,7 +229,7 @@ export function Switcher({ apps, current, rest, onOpen, still = false, hidden = 
     }
 
     const resting = Math.abs(s.x - s.target) < 0.001 && Math.abs(s.v) < 0.005;
-    const tilting = Math.abs(goal.x - s.tilt.x) > 0.002 || Math.abs(goal.y - s.tilt.y) > 0.002;
+    const tilting = Math.abs(goal.x - s.tilt.x) > 0.002 || Math.abs(goal.y - s.tilt.y) > 0.002 || Math.abs(warmGoal - s.warm) > 0.002;
     if (resting) {
       s.x = s.target;
       s.v = 0;
@@ -221,7 +247,7 @@ export function Switcher({ apps, current, rest, onOpen, still = false, hidden = 
     s.raf = resting && !tilting ? 0 : requestAnimationFrame(frame);
   };
 
-  /** Runs the loop without counting as a move: the tilt easing out makes no sound. */
+  /** Runs the loop without counting as a move: the tilt or the hover's warmth easing out makes no sound. */
   const wake = () => {
     const s = sim.current;
     if (s.raf) return;
@@ -371,13 +397,17 @@ export function Switcher({ apps, current, rest, onOpen, still = false, hidden = 
       }}
       style={{ width: CARD + PAD * 2 + STACK_PX * 3, height: CARD + PAD * 2 + STACK_PX * 3 }}
       className={cn('absolute bottom-[max(0.5rem,env(safe-area-inset-bottom))] left-2 z-20 transition-opacity duration-500 sm:bottom-4 sm:left-4',
-        hidden && 'pointer-events-none opacity-0')}>
+        hidden && 'pointer-events-none opacity-0',
+        // The stack's palette, turned with the room's hour ([data-dark] on the room):
+        // cream and stage red by day; at night a lamp left on in the corner, warm and
+        // a little brighter than the dark room around it. draw() leans card and icon
+        // toward the hover pair under the hand, and rests the shadow on the rgb/a pair.
+        '[--sw-card:#fbf5ef] [--sw-icon:#d2513f] [--sw-hover-card:#f4eae2] [--sw-hover-icon:#d2513f] [--sw-ring:rgb(58_38_34_/_0.08)] [--sw-shadow-rgb:80_40_20] [--sw-shadow-a:0.15] [--sw-behind:0.6]',
+        'in-data-[dark=true]:[--sw-card:#4a3730] in-data-[dark=true]:[--sw-icon:#f2a493] in-data-[dark=true]:[--sw-hover-card:#54403a] in-data-[dark=true]:[--sw-hover-icon:#f6c3b6] in-data-[dark=true]:[--sw-ring:rgb(255_235_225_/_0.10)] in-data-[dark=true]:[--sw-shadow-rgb:0_0_0] in-data-[dark=true]:[--sw-shadow-a:0.35] in-data-[dark=true]:[--sw-behind:0.5]')}>
       {apps.map((a, i) => (
         <div key={a.id} ref={el => { cards.current[i] = el; }} aria-hidden="true"
           style={{ left: PAD, bottom: PAD, width: CARD, height: CARD, transformOrigin: '50% 50%' }}
-          // At night a cream card is a lamp left on in the corner: it takes on the dark room around it.
-          className={cn('absolute grid place-items-center rounded-[11px] bg-(--paper) text-(--her) ring-1 ring-(--paper-edge) will-change-transform',
-            'in-data-[dark=true]:bg-[color-mix(in_srgb,var(--paper)_42%,var(--base))] in-data-[dark=true]:ring-white/5',
+          className={cn('absolute grid place-items-center rounded-[11px] bg-(--sw-card) text-(--sw-icon) will-change-transform',
             still && 'transition-opacity duration-200')}>
           <div className="size-8">{a.icon}</div>
           {/* The warm light across the face as it turns: only while it moves. */}

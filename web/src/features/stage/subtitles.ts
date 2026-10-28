@@ -59,7 +59,10 @@ export function beats(text: string, timed: TimedLine[] | null): Beat[] {
     const end = timed[i + 1]?.startsAt ?? start + width(line.text) / READING_EPS;
     const last = out.at(-1);
     if (last && (!last.ended || width(last.text) < MIN_EM)) {
-      return [...out.slice(0, -1), { ...last, text: last.text + gap(last.text, line.text) + line.text, end, ended }];
+      // The pipeline's opening cut keeps the next piece's leading space; a
+      // fresh gap on top of it would double it.
+      const joined = line.text.replace(/^\s+/, '');
+      return [...out.slice(0, -1), { ...last, text: last.text + gap(last.text, joined) + joined, end, ended }];
     }
     return [...out, { text: line.text, start, end, ended }];
   }, []);

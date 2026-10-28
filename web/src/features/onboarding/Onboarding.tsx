@@ -13,7 +13,7 @@ import { api, type OnboardingState } from '@/lib/api';
 import { microphone } from '@/lib/microphone';
 import { cn } from '@/lib/utils';
 
-type Props = { initial: OnboardingState; voiceReady: boolean; listenReady: boolean; onDone: () => void; demo?: DemoMeeting | null };
+type Props = { initial: OnboardingState; voiceReady: boolean; listenReady: boolean; onDone: () => void; demo?: DemoMeeting | null; clock?: string | null };
 /** Where naming stands: asked, she is thinking, she proposed, or the user names her. */
 type Naming = 'ask' | 'thinking' | 'proposed' | 'own';
 
@@ -72,7 +72,7 @@ const PROBLEM: Record<Exclude<EarProblem, null>, string> = {
  * themselves. A restart picks up at the last saved step. It ends by turning
  * into the stage, so the one who asked is the one who is there.
  */
-export function Onboarding({ initial, voiceReady, listenReady, onDone, demo = null }: Props) {
+export function Onboarding({ initial, voiceReady, listenReady, onDone, demo = null, clock = null }: Props) {
   const { state, line, speak, replay, save, proposeName, finish } = useOnboarding(voiceReady, initial);
   const [alias, setAlias] = useState('');
   const [notes, setNotes] = useState('');
@@ -369,6 +369,7 @@ export function Onboarding({ initial, voiceReady, listenReady, onDone, demo = nu
 
   return (
     <Frame
+      clock={clock}
       thinking={naming === 'thinking'}
       line={phase !== 'awake' ? '' : panelLine}
       mark={said && line?.text === SCRIPT.nameEcho(said) ? said : null}

@@ -61,7 +61,7 @@ export function App() {
   // The first meeting runs before anything else; a finished one never returns.
   // The opening plays by itself, so it must know whether a voice is ready before it starts.
   const screen = firstMeeting
-    ? status && <Onboarding initial={onboarding} demo={chat.demo?.meeting ?? null} voiceReady={status.voice.ready} listenReady={status.listen.ready} onDone={() => {
+    ? status && <Onboarding initial={onboarding} demo={chat.demo?.meeting ?? null} clock={chat.demo?.clock ?? null} voiceReady={status.voice.ready} listenReady={status.listen.ready} onDone={() => {
       setArrived(true);
       markOnboarded();
       refreshStatus();

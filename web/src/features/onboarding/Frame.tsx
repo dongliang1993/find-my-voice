@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from 'react';
+import { useLayoutEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react';
 import { Volume2 } from 'lucide-react';
 import { AnimatePresence, motion, useAnimate, useReducedMotion } from 'motion/react';
 import { Spiral, type SpiralStage } from '@/components/Spiral';
@@ -33,6 +33,8 @@ const CURTAIN_EASE = [0.65, 0, 0.35, 1] as const;
 const sentences = (text: string) => text.split(/(?<=[。？！，：])|(?<=[?!,:.]) /).filter(Boolean);
 
 type FrameProps = {
+  /** A demo's hour, so the meeting is lit for the scene rather than for now. */
+  clock?: string | null;
   thinking: boolean;
   line: string;
   /** A word in her line that is about you, set apart as she says it. */
@@ -73,7 +75,7 @@ type FrameProps = {
  */
 export function Frame({
   thinking, line, mark, herTurn, below, belowKey, orb, orbShown, under, stage,
-  onBegin, onReplay, ask, onQuit, listening, said, arriving, onSkip,
+  onBegin, onReplay, ask, onQuit, listening, said, arriving, onSkip, clock = null,
 }: FrameProps) {
   const through = useThrough();
   const still = useReducedMotion() ?? false;
@@ -85,7 +87,8 @@ export function Frame({
   const answered = useRef<HTMLDivElement>(null);
   // The room takes the stage's light for the hour, so the stage is not a change of weather —
   // the mat and its answers too, so a cream card never sits in a room that has gone dark.
-  const ambient = useAmbientTheme(screen, 'calm', { page: true });
+  const now = useMemo(() => (clock ? new Date(clock) : undefined), [clock]);
+  const ambient = useAmbientTheme(screen, 'calm', { page: true, now });
   // The coral covers the mat until the first answer is due; after that it only
   // comes down to a band on her turn, never back over the whole card.
   const [open, setOpen] = useState(false);
